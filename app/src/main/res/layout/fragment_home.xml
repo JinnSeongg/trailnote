@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_screen">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="@dimen/screen_padding"
+            android:paddingBottom="84dp">
+
+        <include layout="@layout/view_screen_header" />
+
+        <TextView
+            android:id="@+id/dateText"
+            style="@style/TrailText.Meta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="82dp"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_card"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <include android:id="@+id/statOne" layout="@layout/item_stat_card" />
+            <include android:id="@+id/statTwo" layout="@layout/item_stat_card" />
+            <include android:id="@+id/statThree" layout="@layout/item_stat_card" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/section_gap"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/TrailText.Section"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="오늘 할 일" />
+
+            <TextView
+                android:id="@+id/todayWorkAddButton"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:gravity="center"
+                android:text="+"
+                android:textColor="@color/trail_ink"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/todayWorkList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:nestedScrollingEnabled="false" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginVertical="16dp"
+            android:background="@color/trail_line" />
+
+        <TextView
+            style="@style/TrailText.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="고정 목표" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/fixedGoalList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:nestedScrollingEnabled="false" />
+
+        <TextView
+            style="@style/TrailText.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/section_gap"
+            android:text="오늘 목표" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/todayGoalList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:nestedScrollingEnabled="false" />
+        </LinearLayout>
+    </ScrollView>
+
+    <include
+        android:id="@+id/todayWorkQuickAdd"
+        layout="@layout/view_bottom_quick_add" />
+</FrameLayout>

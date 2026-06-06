@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="TrailText" />
+
+    <style name="TrailText.Base">
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TrailText.Title" parent="TrailText.Base">
+        <item name="android:textColor">@color/trail_ink</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TrailText.Section" parent="TrailText.Base">
+        <item name="android:textColor">@color/trail_ink</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TrailText.Body" parent="TrailText.Base">
+        <item name="android:textColor">@color/trail_text_secondary</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="TrailText.Meta" parent="TrailText.Base">
+        <item name="android:textColor">@color/trail_muted</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+</resources>

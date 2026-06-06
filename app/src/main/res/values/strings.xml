@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">TrailNote</string>
+    <string name="home">홈</string>
+    <string name="projects">프로젝트</string>
+    <string name="logs">기록</string>
+    <string name="growth">성장</string>
+    <string name="profile">프로필</string>
 </resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="screen_padding">20dp</dimen>
+    <dimen name="section_gap">22dp</dimen>
+    <dimen name="item_gap">10dp</dimen>
+    <dimen name="card_radius">8dp</dimen>
+    <dimen name="card_padding">14dp</dimen>
+    <dimen name="chip_radius">13dp</dimen>
+    <dimen name="chip_padding_h">10dp</dimen>
+    <dimen name="chip_padding_v">5dp</dimen>
+    <dimen name="fab_size">48dp</dimen>
+    <dimen name="progress_height">3dp</dimen>
+</resources>

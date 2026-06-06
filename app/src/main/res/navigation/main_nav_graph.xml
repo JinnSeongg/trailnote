@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/main_nav_graph"
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="com.example.trailnote.feature.home.HomeFragment"
+        android:label="@string/home" />
+
+    <fragment
+        android:id="@+id/projectFragment"
+        android:name="com.example.trailnote.feature.project.ProjectFragment"
+        android:label="@string/projects">
+        <action
+            android:id="@+id/action_projectFragment_to_projectDetailFragment"
+            app:destination="@id/projectDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/projectDetailFragment"
+        android:name="com.example.trailnote.feature.project.ProjectDetailFragment"
+        android:label="@string/projects">
+        <argument
+            android:name="projectId"
+            app:argType="string" />
+        <action
+            android:id="@+id/action_projectDetailFragment_to_milestoneDetailFragment"
+            app:destination="@id/milestoneDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/milestoneDetailFragment"
+        android:name="com.example.trailnote.feature.project.MilestoneDetailFragment"
+        android:label="@string/projects">
+        <argument
+            android:name="projectId"
+            app:argType="string" />
+        <argument
+            android:name="milestoneId"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/logFragment"
+        android:name="com.example.trailnote.feature.log.LogFragment"
+        android:label="@string/logs">
+        <action
+            android:id="@+id/action_logFragment_to_logTopicDetailFragment"
+            app:destination="@id/logTopicDetailFragment" />
+        <action
+            android:id="@+id/action_logFragment_to_logEntryDetailFragment"
+            app:destination="@id/logEntryDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/logTopicDetailFragment"
+        android:name="com.example.trailnote.feature.log.LogTopicDetailFragment"
+        android:label="@string/logs">
+        <argument
+            android:name="topicId"
+            app:argType="string" />
+        <action
+            android:id="@+id/action_logTopicDetailFragment_to_logEntryDetailFragment"
+            app:destination="@id/logEntryDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/logEntryDetailFragment"
+        android:name="com.example.trailnote.feature.log.LogEntryDetailFragment"
+        android:label="@string/logs">
+        <argument
+            android:name="entryId"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/growthFragment"
+        android:name="com.example.trailnote.feature.growth.GrowthFragment"
+        android:label="@string/growth">
+        <action
+            android:id="@+id/action_growthFragment_to_growthAreaDetailFragment"
+            app:destination="@id/growthAreaDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/growthAreaDetailFragment"
+        android:name="com.example.trailnote.feature.growth.GrowthAreaDetailFragment"
+        android:label="@string/growth">
+        <argument
+            android:name="growthAreaId"
+            app:argType="string" />
+        <action
+            android:id="@+id/action_growthAreaDetailFragment_to_growthTopicDetailFragment"
+            app:destination="@id/growthTopicDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/growthTopicDetailFragment"
+        android:name="com.example.trailnote.feature.growth.GrowthTopicDetailFragment"
+        android:label="@string/growth">
+        <argument
+            android:name="growthAreaId"
+            app:argType="string" />
+        <argument
+            android:name="topicId"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/profileFragment"
+        android:name="com.example.trailnote.feature.profile.ProfileFragment"
+        android:label="@string/profile" />
+</navigation>

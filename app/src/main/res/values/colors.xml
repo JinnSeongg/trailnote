@@ -7,4 +7,22 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="trail_bg">#FFFAFAFA</color>
+    <color name="trail_surface">#FFFFFFFF</color>
+    <color name="trail_green">#FF2E7D55</color>
+    <color name="trail_green_dark">#FF202124</color>
+    <color name="trail_blue">#FF7B61FF</color>
+    <color name="trail_ink">#FF111111</color>
+    <color name="trail_text_secondary">#FF555555</color>
+    <color name="trail_muted">#FF8A8A8A</color>
+    <color name="trail_line">#FFE2E2E2</color>
+    <color name="trail_chip">#FFF1F1F1</color>
+    <color name="trail_progress_track">#FFEDEDED</color>
+    <color name="trail_warning">#FFFFC857</color>
+    <color name="profile_card_soft">#FFF6F6F6</color>
+    <color name="profile_badge_level">#FFEAE1FF</color>
+    <color name="profile_badge_exp">#FFFFE9A8</color>
+    <color name="profile_chart_line">#FFA99BFF</color>
+    <color name="profile_success">#FFFFB5B5</color>
+    <color name="profile_down">#FF8D79FF</color>
 </resources>
