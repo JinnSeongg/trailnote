@@ -5,11 +5,16 @@ import android.graphics.Paint
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.example.trailnote.R
 import com.example.trailnote.databinding.ItemShortTaskBinding
 import com.example.trailnote.domain.model.ShortTask
 
 class ShortTaskAdapter(
-    tasks: List<ShortTask>
+    tasks: List<ShortTask>,
+    private val onClick: (ShortTask) -> Unit = {},
+    private val onLongClick: (ShortTask) -> Unit = {},
+    private val isSelectionMode: () -> Boolean = { false },
+    private val isSelected: (ShortTask) -> Boolean = { false }
 ) : RecyclerView.Adapter<ShortTaskAdapter.ViewHolder>() {
     private val items = tasks.toMutableList()
 
@@ -18,7 +23,13 @@ class ShortTaskAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(items[position]) { checked ->
+        holder.bind(
+            item = items[position],
+            onItemClick = onClick,
+            onItemLongClick = onLongClick,
+            isSelectionMode = isSelectionMode,
+            isSelected = isSelected
+        ) { checked ->
             val adapterPosition = holder.bindingAdapterPosition
             if (adapterPosition != RecyclerView.NO_POSITION) {
                 items[adapterPosition] = items[adapterPosition].copy(isDone = checked)
@@ -33,17 +44,43 @@ class ShortTaskAdapter(
         notifyItemInserted(items.lastIndex)
     }
 
+    fun submitList(newItems: List<ShortTask>) {
+        items.clear()
+        items.addAll(newItems)
+        notifyDataSetChanged()
+    }
+
+    fun getItem(position: Int): ShortTask? = items.getOrNull(position)
+
     class ViewHolder(private val binding: ItemShortTaskBinding) : RecyclerView.ViewHolder(binding.root) {
         private val defaultTextColors: ColorStateList = binding.checkBox.textColors
 
-        fun bind(item: ShortTask, onChecked: (Boolean) -> Unit) {
-            binding.checkBox.setOnCheckedChangeListener(null)
+        fun bind(
+            item: ShortTask,
+            onItemClick: (ShortTask) -> Unit,
+            onItemLongClick: (ShortTask) -> Unit,
+            isSelectionMode: () -> Boolean,
+            isSelected: (ShortTask) -> Boolean,
+            onChecked: (Boolean) -> Unit
+        ) {
+            binding.checkBox.setOnClickListener(null)
             binding.checkBox.text = item.title
             binding.checkBox.isChecked = item.isDone
             applyCompletionStyle(item.isDone)
-            binding.checkBox.setOnCheckedChangeListener { _, checked ->
-                onChecked(checked)
-                applyCompletionStyle(checked)
+            binding.checkBox.setBackgroundResource(if (isSelected(item)) R.drawable.bg_short_task_selected else android.R.color.transparent)
+            binding.checkBox.setOnClickListener {
+                if (isSelectionMode()) {
+                    binding.checkBox.isChecked = item.isDone
+                    onItemClick(item)
+                } else {
+                    val checked = binding.checkBox.isChecked
+                    onChecked(checked)
+                    applyCompletionStyle(checked)
+                }
+            }
+            binding.checkBox.setOnLongClickListener {
+                onItemLongClick(item)
+                true
             }
         }
 

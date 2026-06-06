@@ -13,7 +13,12 @@ import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.trailnote.MainActivity
 import com.example.trailnote.R
+import com.example.trailnote.core.selection.MoveTarget
+import com.example.trailnote.core.selection.MoveTargetDialogFragment
+import com.example.trailnote.core.selection.RecyclerDragSelectionHelper
+import com.example.trailnote.core.selection.SelectionState
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.setupTwoLineLimitedDescriptionEditText
 import com.example.trailnote.core.util.setHeader
@@ -26,6 +31,10 @@ class ProjectDetailFragment : Fragment() {
     private var projectId: String = ""
     private var descriptionWatcher: TextWatcher? = null
     private var quickAddMode: QuickAddMode = QuickAddMode.Milestone
+    private var milestoneDragSelectionHelper: RecyclerDragSelectionHelper? = null
+    private val selectionStateListener: (SelectionState) -> Unit = {
+        if (::milestoneAdapter.isInitialized) milestoneAdapter.notifyDataSetChanged()
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val viewBinding = FragmentProjectDetailBinding.inflate(inflater, container, false)
@@ -50,14 +59,16 @@ class ProjectDetailFragment : Fragment() {
             InMemoryDataStore.updateProjectDescription(projectId, text)
         }
 
-        milestoneAdapter = MilestoneAdapter(milestones) { milestone ->
-            findNavController().navigate(
-                R.id.action_projectDetailFragment_to_milestoneDetailFragment,
-                bundleOf("projectId" to projectId, "milestoneId" to milestone.id)
-            )
-        }
+        milestoneAdapter = MilestoneAdapter(
+            milestones,
+            onClick = ::handleMilestoneClick,
+            onLongClick = ::handleMilestoneLongClick,
+            isSelected = ::isMilestoneSelected
+        )
+        selectionController.addStateListener(selectionStateListener)
         current.milestoneList.layoutManager = LinearLayoutManager(requireContext())
         current.milestoneList.adapter = milestoneAdapter
+        attachMilestoneDragHelper()
         current.emptyText.visibility = if (milestones.isEmpty()) View.VISIBLE else View.GONE
         current.milestoneList.visibility = if (milestones.isEmpty()) View.GONE else View.VISIBLE
 
@@ -99,6 +110,85 @@ class ProjectDetailFragment : Fragment() {
 
     private fun showMilestoneFab() {
         binding?.milestoneFabButton?.visibility = View.VISIBLE
+    }
+
+    private fun handleMilestoneClick(milestone: com.example.trailnote.domain.model.Milestone) {
+        if (selectionController.isInSelectionMode) {
+            selectionController.toggle(milestone.id, milestoneSelectionScope())
+        } else {
+            findNavController().navigate(
+                R.id.action_projectDetailFragment_to_milestoneDetailFragment,
+                bundleOf("projectId" to projectId, "milestoneId" to milestone.id)
+            )
+        }
+    }
+
+    private fun handleMilestoneLongClick(milestone: com.example.trailnote.domain.model.Milestone) {
+        prepareMilestoneSelectionHandlers()
+    }
+
+    private fun prepareMilestoneSelectionHandlers() {
+        (requireActivity() as MainActivity).apply {
+            setSelectionDeleteHandler(::confirmDeleteSelectedMilestones)
+            setSelectionMoveHandler(::showMoveMilestoneDialog)
+        }
+    }
+
+    private fun isMilestoneSelected(milestone: com.example.trailnote.domain.model.Milestone): Boolean {
+        return selectionController.isInSelectionMode && milestone.id in selectionController.selectedItemIds
+    }
+
+    private fun confirmDeleteSelectedMilestones() {
+        val ids = selectionController.selectedItemIds.toList()
+        if (ids.isEmpty()) return
+        AlertDialog.Builder(requireContext())
+            .setMessage("\uC120\uD0DD\uD55C \uD56D\uBAA9\uC744 \uC0AD\uC81C\uD560\uAE4C\uC694?")
+            .setNegativeButton("\uCDE8\uC18C", null)
+            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
+                ids.forEach { InMemoryDataStore.deleteMilestone(it) }
+                selectionController.exit()
+                val milestones = InMemoryDataStore.getMilestonesByProject(projectId)
+                milestoneAdapter.submitList(milestones)
+                binding?.emptyText?.visibility = if (milestones.isEmpty()) View.VISIBLE else View.GONE
+                binding?.milestoneList?.visibility = if (milestones.isEmpty()) View.GONE else View.VISIBLE
+            }
+            .show()
+    }
+
+    private fun attachMilestoneDragHelper() {
+        val current = binding ?: return
+        if (milestoneDragSelectionHelper != null) return
+        milestoneDragSelectionHelper = RecyclerDragSelectionHelper(
+            recyclerView = current.milestoneList,
+            selectionController = selectionController,
+            getItemId = { position -> milestoneAdapter.getItem(position)?.id },
+            getItemScope = { position -> milestoneAdapter.getItem(position)?.let { milestoneSelectionScope() } },
+            isItemSelected = { position -> milestoneAdapter.getItem(position)?.let(::isMilestoneSelected) == true },
+            onDragStarted = { prepareMilestoneSelectionHandlers() },
+            onSelectionChanged = { milestoneAdapter.notifyDataSetChanged() }
+        ).also { current.milestoneList.addOnItemTouchListener(it) }
+    }
+
+    private fun showMoveMilestoneDialog() {
+        MoveTargetDialogFragment(
+            title = "\uC774\uB3D9\uD560 \uD504\uB85C\uC81D\uD2B8",
+            addHint = "\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uC785\uB825",
+            loadTargets = {
+                InMemoryDataStore.getProjects().map { project ->
+                    MoveTarget(project.id, project.title)
+                }
+            },
+            onAddTarget = { title -> InMemoryDataStore.addProject(title) },
+            onTargetSelected = { target ->
+                val ids = selectionController.selectedItemIds.toList()
+                InMemoryDataStore.moveMilestonesToProject(ids, target.id)
+                selectionController.exit()
+                val milestones = InMemoryDataStore.getMilestonesByProject(projectId)
+                milestoneAdapter.submitList(milestones)
+                binding?.emptyText?.visibility = if (milestones.isEmpty()) View.VISIBLE else View.GONE
+                binding?.milestoneList?.visibility = if (milestones.isEmpty()) View.GONE else View.VISIBLE
+            }
+        ).show(childFragmentManager, "move_milestones")
     }
 
     private fun showProjectMenu() {
@@ -147,9 +237,21 @@ class ProjectDetailFragment : Fragment() {
             binding?.descriptionText?.removeTextChangedListener(watcher)
         }
         descriptionWatcher = null
+        selectionController.removeStateListener(selectionStateListener)
+        milestoneDragSelectionHelper?.let { binding?.milestoneList?.removeOnItemTouchListener(it) }
+        milestoneDragSelectionHelper = null
+        (requireActivity() as MainActivity).apply {
+            setSelectionDeleteHandler(null)
+            setSelectionMoveHandler(null)
+        }
         binding = null
         super.onDestroyView()
     }
+
+    private val selectionController
+        get() = (requireActivity() as MainActivity).selectionController
+
+    private fun milestoneSelectionScope(): String = "project-milestones:$projectId"
 
     private enum class QuickAddMode {
         Milestone,

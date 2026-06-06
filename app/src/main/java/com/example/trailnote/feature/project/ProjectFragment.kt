@@ -6,11 +6,17 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.trailnote.MainActivity
 import com.example.trailnote.R
+import com.example.trailnote.core.selection.MoveTarget
+import com.example.trailnote.core.selection.MoveTargetDialogFragment
+import com.example.trailnote.core.selection.RecyclerDragSelectionHelper
+import com.example.trailnote.core.selection.SelectionState
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.InMemoryDataStore
@@ -26,6 +32,11 @@ class ProjectFragment : Fragment() {
     private var selectedCategory: String? = null
     private var currentFilter = ProjectFilter.All
     private var quickAddMode: QuickAddMode? = null
+    private var projectDragSelectionHelper: RecyclerDragSelectionHelper? = null
+    private val selectionStateListener: (SelectionState) -> Unit = {
+        projectAdapter.notifyDataSetChanged()
+        projectSectionAdapter.notifyDataSetChanged()
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val viewBinding = FragmentProjectBinding.inflate(inflater, container, false)
@@ -38,16 +49,25 @@ class ProjectFragment : Fragment() {
         knownCategories.clear()
         knownCategories.addAll(InMemoryDataStore.getProjects().map { it.category }.distinct())
         projectSectionAdapter = ProjectSectionAdapter(
-            onProjectClick = ::openProject,
+            onProjectClick = ::handleProjectClick,
+            onProjectLongClick = ::handleProjectLongClick,
+            isProjectSelected = ::isProjectSelected,
+            selectionController = selectionController,
+            onProjectDragStarted = ::prepareProjectSelectionHandlers,
             onCategoryClick = { category ->
-                selectedCategory = category
-                renderProjects()
+                if (!selectionController.isInSelectionMode) {
+                    selectedCategory = category
+                    renderProjects()
+                }
             },
             onCategoryAddClick = { category ->
-                openQuickInput(QuickAddMode.Project(category), "\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uC785\uB825")
+                if (!selectionController.isInSelectionMode) {
+                    openQuickInput(QuickAddMode.Project(category), "\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uC785\uB825")
+                }
             }
         )
-        projectAdapter = ProjectAdapter(emptyList(), ::openProject)
+        projectAdapter = ProjectAdapter(emptyList(), ::handleProjectClick, ::handleProjectLongClick, ::isProjectSelected)
+        selectionController.addStateListener(selectionStateListener)
         current.projectList.layoutManager = LinearLayoutManager(requireContext())
 
         current.root.findViewById<TextView>(R.id.chipAll).setOnClickListener {
@@ -111,6 +131,63 @@ class ProjectFragment : Fragment() {
         )
     }
 
+    private fun handleProjectClick(project: Project) {
+        if (selectionController.isInSelectionMode) {
+            selectionController.toggle(project.id, project.selectionScope())
+        } else {
+            openProject(project)
+        }
+    }
+
+    private fun handleProjectLongClick(project: Project) {
+        prepareProjectSelectionHandlers(project)
+    }
+
+    private fun prepareProjectSelectionHandlers(project: Project) {
+        (requireActivity() as MainActivity).apply {
+            setSelectionDeleteHandler(::confirmDeleteSelectedProjects)
+            setSelectionMoveHandler(::showMoveProjectDialog)
+        }
+    }
+
+    private fun isProjectSelected(project: Project): Boolean {
+        return selectionController.isInSelectionMode && project.id in selectionController.selectedItemIds
+    }
+
+    private fun confirmDeleteSelectedProjects() {
+        val ids = selectionController.selectedItemIds.toList()
+        if (ids.isEmpty()) return
+        AlertDialog.Builder(requireContext())
+            .setMessage("\uC120\uD0DD\uD55C \uD56D\uBAA9\uC744 \uC0AD\uC81C\uD560\uAE4C\uC694?")
+            .setNegativeButton("\uCDE8\uC18C", null)
+            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
+                ids.forEach { InMemoryDataStore.deleteProject(it) }
+                knownCategories.clear()
+                knownCategories.addAll(InMemoryDataStore.getProjects().map { it.category }.distinct())
+                selectionController.exit()
+                renderProjects()
+            }
+            .show()
+    }
+
+    private fun showMoveProjectDialog() {
+        MoveTargetDialogFragment(
+            title = "\uC774\uB3D9\uD560 \uC8FC\uC81C",
+            addHint = "\uC0C8 \uC8FC\uC81C \uC785\uB825",
+            loadTargets = { knownCategories.map { MoveTarget(it, it) } },
+            onAddTarget = { title -> addCategory(title) },
+            onTargetSelected = { target ->
+                val ids = selectionController.selectedItemIds.toList()
+                InMemoryDataStore.moveProjectsToCategory(ids, target.id)
+                addCategory(target.id)
+                knownCategories.clear()
+                knownCategories.addAll(InMemoryDataStore.getProjects().map { it.category }.distinct())
+                selectionController.exit()
+                renderProjects()
+            }
+        ).show(childFragmentManager, "move_projects")
+    }
+
     private fun addCategory(category: String) {
         val normalized = category.trim()
         if (normalized.isNotEmpty() && knownCategories.none { it == normalized }) {
@@ -156,6 +233,7 @@ class ProjectFragment : Fragment() {
         if (category == null) {
             current.selectedCategoryText.visibility = View.GONE
             current.projectList.adapter = projectSectionAdapter
+            removeFlatProjectDragHelper()
             val sections = knownCategories.mapNotNull { knownCategory ->
                 val projects = filteredProjects.filter { it.category == knownCategory }
                 if (projects.isNotEmpty() || currentFilter == ProjectFilter.All) {
@@ -170,6 +248,7 @@ class ProjectFragment : Fragment() {
             current.selectedCategoryText.text = category
             current.projectList.adapter = projectAdapter
             projectAdapter.submitList(filteredProjects)
+            attachFlatProjectDragHelper()
         }
 
         current.root.findViewById<TextView>(R.id.chipAll).setSelectedStyle(currentFilter == ProjectFilter.All)
@@ -183,6 +262,28 @@ class ProjectFragment : Fragment() {
         if (::backCallback.isInitialized) {
             backCallback.isEnabled = InlineQuickAdd.isVisible(current.projectQuickAdd.root) || selectedCategory != null
         }
+    }
+
+    private fun attachFlatProjectDragHelper() {
+        val current = binding ?: return
+        if (projectDragSelectionHelper != null) return
+        projectDragSelectionHelper = RecyclerDragSelectionHelper(
+            recyclerView = current.projectList,
+            selectionController = selectionController,
+            getItemId = { position -> projectAdapter.getItem(position)?.id },
+            getItemScope = { position -> projectAdapter.getItem(position)?.selectionScope() },
+            isItemSelected = { position -> projectAdapter.getItem(position)?.let(::isProjectSelected) == true },
+            onDragStarted = { position ->
+                projectAdapter.getItem(position)?.let(::prepareProjectSelectionHandlers)
+            },
+            onSelectionChanged = { projectAdapter.notifyDataSetChanged() }
+        ).also { current.projectList.addOnItemTouchListener(it) }
+    }
+
+    private fun removeFlatProjectDragHelper() {
+        val current = binding ?: return
+        projectDragSelectionHelper?.let { current.projectList.removeOnItemTouchListener(it) }
+        projectDragSelectionHelper = null
     }
 
     private fun Project.matchesFilter(filter: ProjectFilter): Boolean {
@@ -204,9 +305,20 @@ class ProjectFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        selectionController.removeStateListener(selectionStateListener)
+        removeFlatProjectDragHelper()
+        (requireActivity() as MainActivity).apply {
+            setSelectionDeleteHandler(null)
+            setSelectionMoveHandler(null)
+        }
         binding = null
         super.onDestroyView()
     }
+
+    private val selectionController
+        get() = (requireActivity() as MainActivity).selectionController
+
+    private fun Project.selectionScope(): String = "project-category:$category"
 
     private enum class ProjectFilter {
         All,

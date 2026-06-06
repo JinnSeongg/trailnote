@@ -13,6 +13,11 @@ import androidx.fragment.app.Fragment
 import com.example.trailnote.R
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.trailnote.MainActivity
+import com.example.trailnote.core.selection.MoveTarget
+import com.example.trailnote.core.selection.MoveTargetDialogFragment
+import com.example.trailnote.core.selection.RecyclerDragSelectionHelper
+import com.example.trailnote.core.selection.SelectionState
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.setupTwoLineLimitedDescriptionEditText
 import com.example.trailnote.core.util.setHeader
@@ -23,8 +28,13 @@ class MilestoneDetailFragment : Fragment() {
     private var binding: FragmentMilestoneDetailBinding? = null
     private lateinit var shortTaskAdapter: ShortTaskAdapter
     private var milestoneId: String = ""
+    private var projectId: String = ""
     private var descriptionWatcher: TextWatcher? = null
     private var quickAddMode: QuickAddMode = QuickAddMode.ShortTask
+    private var shortTaskDragSelectionHelper: RecyclerDragSelectionHelper? = null
+    private val selectionStateListener: (SelectionState) -> Unit = {
+        if (::shortTaskAdapter.isInitialized) shortTaskAdapter.notifyDataSetChanged()
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val viewBinding = FragmentMilestoneDetailBinding.inflate(inflater, container, false)
@@ -33,6 +43,7 @@ class MilestoneDetailFragment : Fragment() {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        projectId = requireArguments().getString("projectId").orEmpty()
         milestoneId = requireArguments().getString("milestoneId").orEmpty()
         val milestone = InMemoryDataStore.getMilestone(milestoneId) ?: return
         val tasks = InMemoryDataStore.getShortTasksByMilestone(milestoneId)
@@ -49,9 +60,17 @@ class MilestoneDetailFragment : Fragment() {
             InMemoryDataStore.updateMilestoneDescription(milestoneId, text)
         }
 
-        shortTaskAdapter = ShortTaskAdapter(tasks)
+        shortTaskAdapter = ShortTaskAdapter(
+            tasks = tasks,
+            onClick = ::handleShortTaskClick,
+            onLongClick = ::handleShortTaskLongClick,
+            isSelectionMode = { selectionController.isInSelectionMode },
+            isSelected = ::isShortTaskSelected
+        )
+        selectionController.addStateListener(selectionStateListener)
         current.shortTaskList.layoutManager = LinearLayoutManager(requireContext())
         current.shortTaskList.adapter = shortTaskAdapter
+        attachShortTaskDragHelper()
         current.emptyText.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
         current.shortTaskList.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
 
@@ -93,6 +112,80 @@ class MilestoneDetailFragment : Fragment() {
 
     private fun showShortTaskFab() {
         binding?.shortTaskFabButton?.visibility = View.VISIBLE
+    }
+
+    private fun handleShortTaskClick(shortTask: com.example.trailnote.domain.model.ShortTask) {
+        if (selectionController.isInSelectionMode) {
+            selectionController.toggle(shortTask.id, shortTaskSelectionScope())
+        }
+    }
+
+    private fun handleShortTaskLongClick(shortTask: com.example.trailnote.domain.model.ShortTask) {
+        prepareShortTaskSelectionHandlers()
+    }
+
+    private fun prepareShortTaskSelectionHandlers() {
+        (requireActivity() as MainActivity).apply {
+            setSelectionDeleteHandler(::confirmDeleteSelectedShortTasks)
+            setSelectionMoveHandler(::showMoveShortTaskDialog)
+        }
+    }
+
+    private fun isShortTaskSelected(shortTask: com.example.trailnote.domain.model.ShortTask): Boolean {
+        return selectionController.isInSelectionMode && shortTask.id in selectionController.selectedItemIds
+    }
+
+    private fun confirmDeleteSelectedShortTasks() {
+        val ids = selectionController.selectedItemIds.toList()
+        if (ids.isEmpty()) return
+        AlertDialog.Builder(requireContext())
+            .setMessage("\uC120\uD0DD\uD55C \uD56D\uBAA9\uC744 \uC0AD\uC81C\uD560\uAE4C\uC694?")
+            .setNegativeButton("\uCDE8\uC18C", null)
+            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
+                ids.forEach { InMemoryDataStore.deleteShortTask(it) }
+                selectionController.exit()
+                val tasks = InMemoryDataStore.getShortTasksByMilestone(milestoneId)
+                shortTaskAdapter.submitList(tasks)
+                binding?.emptyText?.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
+                binding?.shortTaskList?.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
+            }
+            .show()
+    }
+
+    private fun attachShortTaskDragHelper() {
+        val current = binding ?: return
+        if (shortTaskDragSelectionHelper != null) return
+        shortTaskDragSelectionHelper = RecyclerDragSelectionHelper(
+            recyclerView = current.shortTaskList,
+            selectionController = selectionController,
+            getItemId = { position -> shortTaskAdapter.getItem(position)?.id },
+            getItemScope = { position -> shortTaskAdapter.getItem(position)?.let { shortTaskSelectionScope() } },
+            isItemSelected = { position -> shortTaskAdapter.getItem(position)?.let(::isShortTaskSelected) == true },
+            onDragStarted = { prepareShortTaskSelectionHandlers() },
+            onSelectionChanged = { shortTaskAdapter.notifyDataSetChanged() }
+        ).also { current.shortTaskList.addOnItemTouchListener(it) }
+    }
+
+    private fun showMoveShortTaskDialog() {
+        MoveTargetDialogFragment(
+            title = "\uC774\uB3D9\uD560 \uC911\uAE30\uBAA9\uD45C",
+            addHint = "\uC0C8 \uC911\uAE30\uBAA9\uD45C \uC785\uB825",
+            loadTargets = {
+                InMemoryDataStore.getMilestonesByProject(projectId).map { milestone ->
+                    MoveTarget(milestone.id, milestone.title)
+                }
+            },
+            onAddTarget = { title -> InMemoryDataStore.addMilestone(projectId, title) },
+            onTargetSelected = { target ->
+                val ids = selectionController.selectedItemIds.toList()
+                InMemoryDataStore.moveShortTasksToMilestone(ids, target.id)
+                selectionController.exit()
+                val tasks = InMemoryDataStore.getShortTasksByMilestone(milestoneId)
+                shortTaskAdapter.submitList(tasks)
+                binding?.emptyText?.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
+                binding?.shortTaskList?.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
+            }
+        ).show(childFragmentManager, "move_short_tasks")
     }
 
     private fun showMilestoneMenu() {
@@ -141,9 +234,21 @@ class MilestoneDetailFragment : Fragment() {
             binding?.descriptionText?.removeTextChangedListener(watcher)
         }
         descriptionWatcher = null
+        selectionController.removeStateListener(selectionStateListener)
+        shortTaskDragSelectionHelper?.let { binding?.shortTaskList?.removeOnItemTouchListener(it) }
+        shortTaskDragSelectionHelper = null
+        (requireActivity() as MainActivity).apply {
+            setSelectionDeleteHandler(null)
+            setSelectionMoveHandler(null)
+        }
         binding = null
         super.onDestroyView()
     }
+
+    private val selectionController
+        get() = (requireActivity() as MainActivity).selectionController
+
+    private fun shortTaskSelectionScope(): String = "milestone-short-tasks:$milestoneId"
 
     private enum class QuickAddMode {
         ShortTask,

@@ -5,13 +5,18 @@ import android.graphics.Paint
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.example.trailnote.R
 import com.example.trailnote.data.InMemoryDataStore
 import com.example.trailnote.databinding.ItemRoutineBinding
 import com.example.trailnote.domain.model.RepeatType
 import com.example.trailnote.domain.model.Routine
 
 class RoutineAdapter(
-    routines: List<Routine>
+    routines: List<Routine>,
+    private val onClick: (Routine) -> Unit = {},
+    private val onLongClick: (Routine) -> Unit = {},
+    private val isSelectionMode: () -> Boolean = { false },
+    private val isSelected: (Routine) -> Boolean = { false }
 ) : RecyclerView.Adapter<RoutineAdapter.ViewHolder>() {
     private val items = routines.toMutableList()
 
@@ -22,6 +27,10 @@ class RoutineAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         holder.bind(
             item = items[position],
+            onItemClick = onClick,
+            onItemLongClick = onLongClick,
+            isSelectionMode = isSelectionMode,
+            isSelected = isSelected,
             onChecked = { checked ->
                 val adapterPosition = holder.bindingAdapterPosition
                 if (adapterPosition != RecyclerView.NO_POSITION) {
@@ -50,19 +59,57 @@ class RoutineAdapter(
         notifyItemInserted(items.lastIndex)
     }
 
+    fun submitList(newItems: List<Routine>) {
+        items.clear()
+        items.addAll(newItems)
+        notifyDataSetChanged()
+    }
+
+    fun getItem(position: Int): Routine? = items.getOrNull(position)
+
     class ViewHolder(private val binding: ItemRoutineBinding) : RecyclerView.ViewHolder(binding.root) {
         private val defaultTextColors: ColorStateList = binding.checkBox.textColors
 
-        fun bind(item: Routine, onChecked: (Boolean) -> Unit, onRepeatToggle: () -> Unit) {
-            binding.checkBox.setOnCheckedChangeListener(null)
+        fun bind(
+            item: Routine,
+            onItemClick: (Routine) -> Unit,
+            onItemLongClick: (Routine) -> Unit,
+            isSelectionMode: () -> Boolean,
+            isSelected: (Routine) -> Boolean,
+            onChecked: (Boolean) -> Unit,
+            onRepeatToggle: () -> Unit
+        ) {
+            binding.checkBox.setOnClickListener(null)
+            binding.repeatTypeText.setOnClickListener(null)
             binding.checkBox.text = item.title
             binding.checkBox.isChecked = item.isDoneToday
             binding.repeatTypeText.text = item.repeatType.displayText()
-            binding.repeatTypeText.setOnClickListener { onRepeatToggle() }
+            binding.root.setBackgroundResource(if (isSelected(item)) R.drawable.bg_short_task_selected else android.R.color.transparent)
             applyCompletionStyle(item.isDoneToday)
-            binding.checkBox.setOnCheckedChangeListener { _, checked ->
-                onChecked(checked)
-                applyCompletionStyle(checked)
+
+            binding.root.setOnClickListener {
+                if (isSelectionMode()) onItemClick(item)
+            }
+            binding.root.setOnLongClickListener {
+                onItemLongClick(item)
+                true
+            }
+            binding.checkBox.setOnClickListener {
+                if (isSelectionMode()) {
+                    binding.checkBox.isChecked = item.isDoneToday
+                    onItemClick(item)
+                } else {
+                    val checked = binding.checkBox.isChecked
+                    onChecked(checked)
+                    applyCompletionStyle(checked)
+                }
+            }
+            binding.repeatTypeText.setOnClickListener {
+                if (isSelectionMode()) {
+                    onItemClick(item)
+                } else {
+                    onRepeatToggle()
+                }
             }
         }
 

@@ -2,19 +2,29 @@ package com.example.trailnote
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.NavHostFragment
+import com.example.trailnote.core.selection.SelectionController
+import com.example.trailnote.core.selection.SelectionState
 import com.example.trailnote.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
+    lateinit var selectionController: SelectionController
+        private set
+    private var selectionDeleteHandler: (() -> Unit)? = null
+    private var selectionMoveHandler: (() -> Unit)? = null
     private var isUpdatingBottomNavigation = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        selectionController = SelectionController().also {
+            it.addStateListener(::renderSelectionState)
+        }
 
         val navHostFragment = supportFragmentManager
             .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
@@ -31,14 +41,47 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNavigation.setOnItemReselectedListener { item ->
             navigateToRootTab(navController, item.itemId)
         }
+        binding.selectionActionBar.cancelSelectionButton.setOnClickListener {
+            selectionController.exit()
+        }
+        binding.selectionActionBar.moveSelectionButton.setOnClickListener {
+            selectionMoveHandler?.invoke()
+        }
+        binding.selectionActionBar.deleteSelectionButton.setOnClickListener {
+            selectionDeleteHandler?.invoke()
+        }
 
         navController.addOnDestinationChangedListener { _, destination, _ ->
+            selectionController.exit()
             val tabId = destination.id.toRootTabId() ?: return@addOnDestinationChangedListener
             if (binding.bottomNavigation.selectedItemId != tabId) {
                 isUpdatingBottomNavigation = true
                 binding.bottomNavigation.selectedItemId = tabId
                 isUpdatingBottomNavigation = false
             }
+        }
+    }
+
+    fun enterSelectionMode(selectionScope: String?, selectedItemIds: Collection<String> = emptyList()) {
+        selectionController.enter(selectionScope, selectedItemIds)
+    }
+
+    fun setSelectionDeleteHandler(handler: (() -> Unit)?) {
+        selectionDeleteHandler = handler
+    }
+
+    fun setSelectionMoveHandler(handler: (() -> Unit)?) {
+        selectionMoveHandler = handler
+        binding.selectionActionBar.moveSelectionButton.isVisible = handler != null && selectionController.isInSelectionMode
+    }
+
+    private fun renderSelectionState(state: SelectionState) {
+        binding.bottomNavigation.isVisible = !state.isInSelectionMode
+        binding.selectionActionBar.root.isVisible = state.isInSelectionMode
+        binding.selectionActionBar.moveSelectionButton.isVisible = state.isInSelectionMode && selectionMoveHandler != null
+        if (!state.isInSelectionMode) {
+            selectionDeleteHandler = null
+            selectionMoveHandler = null
         }
     }
 

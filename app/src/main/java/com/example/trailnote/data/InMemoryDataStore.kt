@@ -126,6 +126,12 @@ object InMemoryDataStore {
         projects.removeAll { it.id == projectId }
     }
 
+    fun moveProjectsToCategory(projectIds: Collection<String>, category: String) {
+        projects.replaceAll { project ->
+            if (project.id in projectIds) project.copy(category = category) else project
+        }
+    }
+
     fun addMilestone(projectId: String, title: String): Milestone {
         val milestone = Milestone(
             id = nextId(milestones.map { it.id }),
@@ -160,6 +166,22 @@ object InMemoryDataStore {
         milestones.removeAll { it.id == milestoneId }
     }
 
+    fun moveMilestonesToProject(milestoneIds: Collection<String>, projectId: String) {
+        milestones.replaceAll { milestone ->
+            if (milestone.id in milestoneIds) milestone.copy(projectId = projectId) else milestone
+        }
+    }
+
+    fun deleteShortTask(shortTaskId: String) {
+        shortTasks.removeAll { it.id == shortTaskId }
+    }
+
+    fun moveShortTasksToMilestone(shortTaskIds: Collection<String>, milestoneId: String) {
+        shortTasks.replaceAll { shortTask ->
+            if (shortTask.id in shortTaskIds) shortTask.copy(milestoneId = milestoneId) else shortTask
+        }
+    }
+
     fun addShortTask(milestoneId: String, title: String): ShortTask {
         val shortTask = ShortTask(
             id = nextId(shortTasks.map { it.id }),
@@ -176,6 +198,18 @@ object InMemoryDataStore {
         val category = LogCategory(nextId(logCategories.map { it.id }), title, LogCategoryType.Memo)
         logCategories.add(category)
         return category
+    }
+
+    fun addLogTopic(categoryId: String, title: String): LogTopic {
+        val topic = LogTopic(
+            id = nextId(logTopics.map { it.id }),
+            categoryId = categoryId,
+            title = title,
+            description = "",
+            order = logTopics.count { it.categoryId == categoryId } + 1
+        )
+        logTopics.add(topic)
+        return topic
     }
 
     fun addLogEntry(topicId: String, title: String): LogEntry {
@@ -210,6 +244,18 @@ object InMemoryDataStore {
         val updatedTopic = logTopics[index].copy(title = title)
         logTopics[index] = updatedTopic
         return updatedTopic
+    }
+
+    fun moveLogTopicsToCategory(topicIds: Collection<String>, categoryId: String) {
+        logTopics.replaceAll { topic ->
+            if (topic.id in topicIds) topic.copy(categoryId = categoryId) else topic
+        }
+    }
+
+    fun moveLogEntriesToTopic(entryIds: Collection<String>, topicId: String) {
+        logEntries.replaceAll { entry ->
+            if (entry.id in entryIds) entry.copy(topicId = topicId) else entry
+        }
     }
 
     fun deleteLogTopic(topicId: String) {
@@ -250,6 +296,12 @@ object InMemoryDataStore {
         growthAreas.removeAll { it.id == growthAreaId }
     }
 
+    fun moveGrowthTopicsToArea(topicIds: Collection<String>, growthAreaId: String) {
+        growthTopics.replaceAll { topic ->
+            if (topic.id in topicIds) topic.copy(growthAreaId = growthAreaId) else topic
+        }
+    }
+
     fun addGrowthTopic(growthAreaId: String, title: String): GrowthTopic {
         val topic = GrowthTopic(
             id = nextId(growthTopics.map { it.id }),
@@ -285,6 +337,12 @@ object InMemoryDataStore {
         growthTopics.removeAll { it.id == topicId }
     }
 
+    fun moveRoutinesToTopic(routineIds: Collection<String>, topicId: String) {
+        routines.replaceAll { routine ->
+            if (routine.id in routineIds) routine.copy(growthTopicId = topicId) else routine
+        }
+    }
+
     fun addRoutine(topicId: String, title: String): Routine {
         val routine = Routine(
             id = "routine-${routines.size + 1}",
@@ -315,6 +373,10 @@ object InMemoryDataStore {
         val updatedRoutine = routines[index].copy(repeatType = repeatType)
         routines[index] = updatedRoutine
         return updatedRoutine
+    }
+
+    fun deleteRoutine(routineId: String) {
+        routines.removeAll { it.id == routineId }
     }
 
     private fun nextId(ids: List<String>): String {
