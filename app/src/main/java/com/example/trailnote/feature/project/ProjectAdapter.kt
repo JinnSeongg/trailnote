@@ -39,7 +39,7 @@ class ProjectAdapter(
                 .map { milestone -> ProgressCalculator.milestoneProgress(InMemoryDataStore.getShortTasksByMilestone(milestone.id)) }
             val progress = ProgressCalculator.projectProgress(milestoneProgresses)
             binding.titleText.text = item.title
-            binding.metaText.text = "${item.category} · ${item.status} · 목표 ${item.targetDate}"
+            binding.metaText.text = "${item.status} \u00B7 \uB9C8\uC9C0\uB9C9 \uC791\uC5C5 ${item.targetDate.replace('-', '.')}"
             binding.progressBar.progress = progress
             binding.progressText.text = "$progress%"
             binding.root.setOnClickListener { onClick(item) }

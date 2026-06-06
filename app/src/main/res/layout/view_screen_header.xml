@@ -33,4 +33,15 @@
         android:textColor="@color/trail_ink"
         android:textSize="19sp"
         android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/headerMore"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:gravity="center"
+        android:text="&#183;&#183;&#183;"
+        android:textColor="@color/trail_ink"
+        android:textSize="19sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
 </LinearLayout>

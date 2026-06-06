@@ -22,11 +22,11 @@
             android:orientation="horizontal">
 
             <TextView
+                android:id="@+id/avatarText"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="@drawable/bg_profile_avatar"
                 android:gravity="center"
-                android:text="○"
                 android:textColor="@color/trail_ink"
                 android:textSize="28sp" />
 
@@ -72,10 +72,11 @@
             </LinearLayout>
 
             <TextView
+                android:id="@+id/editProfileButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_profile_small_button"
-                android:text="프로필 편집"
+                android:text="&#54532;&#47196;&#54596; &#54200;&#51665;"
                 android:textColor="@color/trail_text_secondary"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -132,13 +133,13 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="활동 통계" />
+                android:text="&#54876;&#46041; &#53685;&#44228;" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_profile_small_button"
-                android:text="이번 달 ⌄"
+                android:text="&#51060;&#48264; &#45804;"
                 android:textColor="@color/trail_text_secondary"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -160,7 +161,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="28dp"
-            android:text="활동 추이" />
+            android:text="&#54876;&#46041; &#52628;&#51060;" />
 
         <com.example.trailnote.feature.profile.ActivityChartView
             android:id="@+id/activityChart"
@@ -188,13 +189,14 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="업적" />
+                android:text="&#50629;&#51201;" />
 
             <TextView
+                android:id="@+id/achievementAllButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_profile_small_button"
-                android:text="전체보기"
+                android:text="&#51204;&#52404;&#48372;&#44592;"
                 android:textColor="@color/trail_text_secondary"
                 android:textSize="11sp" />
         </LinearLayout>

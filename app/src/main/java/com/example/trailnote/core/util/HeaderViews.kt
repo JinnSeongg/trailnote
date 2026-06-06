@@ -16,6 +16,7 @@ fun View.setHeader(
         text = action
         setOnClickListener { onAction?.invoke() }
     }
+    findViewById<TextView>(R.id.headerMore)?.visibility = View.GONE
     findViewById<TextView>(R.id.menuText)?.apply {
         text = if (showBack) "‹" else "☰"
         setOnClickListener { onBack?.invoke() }

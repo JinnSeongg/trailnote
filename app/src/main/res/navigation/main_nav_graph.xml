@@ -111,5 +111,14 @@
     <fragment
         android:id="@+id/profileFragment"
         android:name="com.example.trailnote.feature.profile.ProfileFragment"
+        android:label="@string/profile">
+        <action
+            android:id="@+id/action_profileFragment_to_achievementListFragment"
+            app:destination="@id/achievementListFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/achievementListFragment"
+        android:name="com.example.trailnote.feature.profile.AchievementListFragment"
         android:label="@string/profile" />
 </navigation>

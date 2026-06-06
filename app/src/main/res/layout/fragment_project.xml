@@ -14,6 +14,14 @@
 
         <include layout="@layout/view_filter_chips" />
 
+        <TextView
+            android:id="@+id/selectedCategoryText"
+            style="@style/TrailText.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:visibility="gone" />
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/projectList"
             android:layout_width="match_parent"
@@ -21,7 +29,7 @@
             android:layout_marginTop="18dp"
             android:layout_weight="1"
             android:clipToPadding="false"
-            android:paddingBottom="20dp" />
+            android:paddingBottom="84dp" />
     </LinearLayout>
 
     <TextView

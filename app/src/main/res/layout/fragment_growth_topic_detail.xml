@@ -12,12 +12,21 @@
 
         <include layout="@layout/view_screen_header" />
 
-        <TextView
+        <EditText
             android:id="@+id/descriptionText"
             style="@style/TrailText.Body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp" />
+            android:layout_marginTop="12dp"
+            android:background="@null"
+            android:backgroundTint="@android:color/transparent"
+            android:hint="&#49444;&#47749;"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:maxLines="2"
+            android:minLines="1"
+            android:padding="0dp"
+            android:singleLine="false"
+            android:textColorHint="@color/trail_muted" />
 
         <TextView
             style="@style/TrailText.Section"

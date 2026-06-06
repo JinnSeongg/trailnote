@@ -3,7 +3,10 @@ package com.example.trailnote.data
 import com.example.trailnote.data.sample.SampleGrowth
 import com.example.trailnote.data.sample.SampleHome
 import com.example.trailnote.data.sample.SampleLogs
+import com.example.trailnote.data.sample.SampleProfile
 import com.example.trailnote.data.sample.SampleProjects
+import com.example.trailnote.domain.model.Achievement
+import com.example.trailnote.domain.model.ActivityRecord
 import com.example.trailnote.domain.model.GrowthArea
 import com.example.trailnote.domain.model.GrowthTopic
 import com.example.trailnote.domain.model.LogCategory
@@ -11,6 +14,7 @@ import com.example.trailnote.domain.model.LogCategoryType
 import com.example.trailnote.domain.model.LogEntry
 import com.example.trailnote.domain.model.LogTopic
 import com.example.trailnote.domain.model.Milestone
+import com.example.trailnote.domain.model.ProfileSummary
 import com.example.trailnote.domain.model.Project
 import com.example.trailnote.domain.model.RepeatType
 import com.example.trailnote.domain.model.Routine
@@ -28,6 +32,9 @@ object InMemoryDataStore {
     private val growthTopics = SampleGrowth.topics.toMutableList()
     private val routines = SampleGrowth.routines.toMutableList()
     private val todayWorks = SampleHome.todayWorks.toMutableList()
+    private var profileSummary = SampleProfile.summary.copy(
+        featuredAchievementId = SampleProfile.achievements.firstOrNull { it.isUnlocked }?.id
+    )
 
     fun getProjects(): List<Project> = projects.toList()
     fun getProject(projectId: String): Project? = projects.firstOrNull { it.id == projectId }
@@ -55,6 +62,18 @@ object InMemoryDataStore {
     fun getGoalSettings() = SampleHome.goalSettings
     fun getFixedGoals(): List<Task> = SampleHome.fixedGoals
     fun getTodayGoals(): List<Task> = SampleHome.todayGoals
+    fun getProfileSummary(): ProfileSummary = profileSummary
+    fun getAchievements(): List<Achievement> = SampleProfile.achievements
+    fun getActivityRecords(): List<ActivityRecord> = SampleProfile.activityRecords
+
+    fun updateProfile(name: String, featuredAchievementId: String?, avatarVariant: Int): ProfileSummary {
+        profileSummary = profileSummary.copy(
+            name = name,
+            featuredAchievementId = featuredAchievementId,
+            avatarVariant = avatarVariant
+        )
+        return profileSummary
+    }
 
     fun addTodayWork(title: String): Task {
         val task = Task(nextId(todayWorks.map { it.id }), title, false)
@@ -75,6 +94,38 @@ object InMemoryDataStore {
         return project
     }
 
+    fun addProject(title: String, category: String): Project {
+        val project = addProject(title)
+        val index = projects.indexOfFirst { it.id == project.id }
+        if (index == -1) return project
+        val categorizedProject = project.copy(category = category)
+        projects[index] = categorizedProject
+        return categorizedProject
+    }
+
+    fun updateProjectDescription(projectId: String, description: String): Project? {
+        val index = projects.indexOfFirst { it.id == projectId }
+        if (index == -1) return null
+        val updatedProject = projects[index].copy(description = description)
+        projects[index] = updatedProject
+        return updatedProject
+    }
+
+    fun updateProjectTitle(projectId: String, title: String): Project? {
+        val index = projects.indexOfFirst { it.id == projectId }
+        if (index == -1) return null
+        val updatedProject = projects[index].copy(title = title)
+        projects[index] = updatedProject
+        return updatedProject
+    }
+
+    fun deleteProject(projectId: String) {
+        val milestoneIds = milestones.filter { it.projectId == projectId }.map { it.id }
+        shortTasks.removeAll { it.milestoneId in milestoneIds }
+        milestones.removeAll { it.projectId == projectId }
+        projects.removeAll { it.id == projectId }
+    }
+
     fun addMilestone(projectId: String, title: String): Milestone {
         val milestone = Milestone(
             id = nextId(milestones.map { it.id }),
@@ -86,6 +137,27 @@ object InMemoryDataStore {
         )
         milestones.add(milestone)
         return milestone
+    }
+
+    fun updateMilestoneDescription(milestoneId: String, description: String): Milestone? {
+        val index = milestones.indexOfFirst { it.id == milestoneId }
+        if (index == -1) return null
+        val updatedMilestone = milestones[index].copy(description = description)
+        milestones[index] = updatedMilestone
+        return updatedMilestone
+    }
+
+    fun updateMilestoneTitle(milestoneId: String, title: String): Milestone? {
+        val index = milestones.indexOfFirst { it.id == milestoneId }
+        if (index == -1) return null
+        val updatedMilestone = milestones[index].copy(title = title)
+        milestones[index] = updatedMilestone
+        return updatedMilestone
+    }
+
+    fun deleteMilestone(milestoneId: String) {
+        shortTasks.removeAll { it.milestoneId == milestoneId }
+        milestones.removeAll { it.id == milestoneId }
     }
 
     fun addShortTask(milestoneId: String, title: String): ShortTask {
@@ -132,10 +204,50 @@ object InMemoryDataStore {
         return updatedEntry
     }
 
+    fun updateLogTopicTitle(topicId: String, title: String): LogTopic? {
+        val index = logTopics.indexOfFirst { it.id == topicId }
+        if (index == -1) return null
+        val updatedTopic = logTopics[index].copy(title = title)
+        logTopics[index] = updatedTopic
+        return updatedTopic
+    }
+
+    fun deleteLogTopic(topicId: String) {
+        logEntries.removeAll { it.topicId == topicId }
+        logTopics.removeAll { it.id == topicId }
+    }
+
+    fun deleteLogEntry(entryId: String) {
+        logEntries.removeAll { it.id == entryId }
+    }
+
     fun addGrowthArea(title: String): GrowthArea {
         val area = GrowthArea(nextId(growthAreas.map { it.id }), title, "", 1, 0)
         growthAreas.add(area)
         return area
+    }
+
+    fun updateGrowthAreaDescription(growthAreaId: String, description: String): GrowthArea? {
+        val index = growthAreas.indexOfFirst { it.id == growthAreaId }
+        if (index == -1) return null
+        val updatedArea = growthAreas[index].copy(description = description)
+        growthAreas[index] = updatedArea
+        return updatedArea
+    }
+
+    fun updateGrowthAreaTitle(growthAreaId: String, title: String): GrowthArea? {
+        val index = growthAreas.indexOfFirst { it.id == growthAreaId }
+        if (index == -1) return null
+        val updatedArea = growthAreas[index].copy(title = title)
+        growthAreas[index] = updatedArea
+        return updatedArea
+    }
+
+    fun deleteGrowthArea(growthAreaId: String) {
+        val topicIds = growthTopics.filter { it.growthAreaId == growthAreaId }.map { it.id }
+        routines.removeAll { it.growthTopicId in topicIds }
+        growthTopics.removeAll { it.growthAreaId == growthAreaId }
+        growthAreas.removeAll { it.id == growthAreaId }
     }
 
     fun addGrowthTopic(growthAreaId: String, title: String): GrowthTopic {
@@ -152,6 +264,27 @@ object InMemoryDataStore {
         return topic
     }
 
+    fun updateGrowthTopicDescription(topicId: String, description: String): GrowthTopic? {
+        val index = growthTopics.indexOfFirst { it.id == topicId }
+        if (index == -1) return null
+        val updatedTopic = growthTopics[index].copy(description = description)
+        growthTopics[index] = updatedTopic
+        return updatedTopic
+    }
+
+    fun updateGrowthTopicTitle(topicId: String, title: String): GrowthTopic? {
+        val index = growthTopics.indexOfFirst { it.id == topicId }
+        if (index == -1) return null
+        val updatedTopic = growthTopics[index].copy(title = title)
+        growthTopics[index] = updatedTopic
+        return updatedTopic
+    }
+
+    fun deleteGrowthTopic(topicId: String) {
+        routines.removeAll { it.growthTopicId == topicId }
+        growthTopics.removeAll { it.id == topicId }
+    }
+
     fun addRoutine(topicId: String, title: String): Routine {
         val routine = Routine(
             id = "routine-${routines.size + 1}",
@@ -160,12 +293,28 @@ object InMemoryDataStore {
             description = "",
             isFixed = false,
             isActive = true,
-            repeatType = RepeatType.Daily,
+            repeatType = RepeatType.Weekly,
             isDoneToday = false,
             order = routines.count { it.growthTopicId == topicId } + 1
         )
         routines.add(routine)
         return routine
+    }
+
+    fun updateRoutineDone(routineId: String, isDoneToday: Boolean): Routine? {
+        val index = routines.indexOfFirst { it.id == routineId }
+        if (index == -1) return null
+        val updatedRoutine = routines[index].copy(isDoneToday = isDoneToday)
+        routines[index] = updatedRoutine
+        return updatedRoutine
+    }
+
+    fun updateRoutineRepeatType(routineId: String, repeatType: RepeatType): Routine? {
+        val index = routines.indexOfFirst { it.id == routineId }
+        if (index == -1) return null
+        val updatedRoutine = routines[index].copy(repeatType = repeatType)
+        routines[index] = updatedRoutine
+        return updatedRoutine
     }
 
     private fun nextId(ids: List<String>): String {

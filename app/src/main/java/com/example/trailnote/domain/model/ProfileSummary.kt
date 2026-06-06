@@ -7,5 +7,7 @@ data class ProfileSummary(
     val completedTaskCount: Int,
     val activeProjectCount: Int,
     val logCount: Int,
-    val completedRoutineCount: Int
+    val completedRoutineCount: Int,
+    val featuredAchievementId: String? = null,
+    val avatarVariant: Int = 0
 )

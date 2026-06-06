@@ -32,7 +32,7 @@ class MilestoneAdapter(
             val tasks = InMemoryDataStore.getShortTasksByMilestone(item.id)
             val progress = ProgressCalculator.milestoneProgress(tasks)
             binding.titleText.text = item.title
-            binding.metaText.text = "목표 ${tasks.count { it.isDone }}/${tasks.size} · 최근 기록 ${item.targetDate}"
+            binding.metaText.text = "\uBAA9\uD45C ${tasks.count { it.isDone }}/${tasks.size} \u00B7 \uB9C8\uC9C0\uB9C9 \uC791\uC5C5 ${item.targetDate}"
             binding.progressBar.progress = progress
             binding.progressText.text = "$progress%"
             binding.root.setOnClickListener { onClick(item) }

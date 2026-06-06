@@ -63,7 +63,8 @@ class MainActivity : AppCompatActivity() {
             R.id.growthFragment,
             R.id.growthAreaDetailFragment,
             R.id.growthTopicDetailFragment -> R.id.growthFragment
-            R.id.profileFragment -> R.id.profileFragment
+            R.id.profileFragment,
+            R.id.achievementListFragment -> R.id.profileFragment
             else -> null
         }
     }

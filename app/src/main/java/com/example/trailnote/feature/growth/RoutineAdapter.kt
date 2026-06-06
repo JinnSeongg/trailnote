@@ -5,7 +5,9 @@ import android.graphics.Paint
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.example.trailnote.data.InMemoryDataStore
 import com.example.trailnote.databinding.ItemRoutineBinding
+import com.example.trailnote.domain.model.RepeatType
 import com.example.trailnote.domain.model.Routine
 
 class RoutineAdapter(
@@ -18,12 +20,27 @@ class RoutineAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(items[position]) { checked ->
-            val adapterPosition = holder.bindingAdapterPosition
-            if (adapterPosition != RecyclerView.NO_POSITION) {
-                items[adapterPosition] = items[adapterPosition].copy(isDoneToday = checked)
+        holder.bind(
+            item = items[position],
+            onChecked = { checked ->
+                val adapterPosition = holder.bindingAdapterPosition
+                if (adapterPosition != RecyclerView.NO_POSITION) {
+                    val updated = items[adapterPosition].copy(isDoneToday = checked)
+                    items[adapterPosition] = updated
+                    InMemoryDataStore.updateRoutineDone(updated.id, checked)
+                }
+            },
+            onRepeatToggle = {
+                val adapterPosition = holder.bindingAdapterPosition
+                if (adapterPosition != RecyclerView.NO_POSITION) {
+                    val nextRepeatType = items[adapterPosition].repeatType.nextToggle()
+                    val updated = items[adapterPosition].copy(repeatType = nextRepeatType)
+                    items[adapterPosition] = updated
+                    InMemoryDataStore.updateRoutineRepeatType(updated.id, nextRepeatType)
+                    notifyItemChanged(adapterPosition)
+                }
             }
-        }
+        )
     }
 
     override fun getItemCount(): Int = items.size
@@ -36,12 +53,12 @@ class RoutineAdapter(
     class ViewHolder(private val binding: ItemRoutineBinding) : RecyclerView.ViewHolder(binding.root) {
         private val defaultTextColors: ColorStateList = binding.checkBox.textColors
 
-        fun bind(item: Routine, onChecked: (Boolean) -> Unit) {
-            val fixed = if (item.isFixed) "고정" else "오늘"
+        fun bind(item: Routine, onChecked: (Boolean) -> Unit, onRepeatToggle: () -> Unit) {
             binding.checkBox.setOnCheckedChangeListener(null)
             binding.checkBox.text = item.title
             binding.checkBox.isChecked = item.isDoneToday
-            binding.badgeText.text = fixed
+            binding.repeatTypeText.text = item.repeatType.displayText()
+            binding.repeatTypeText.setOnClickListener { onRepeatToggle() }
             applyCompletionStyle(item.isDoneToday)
             binding.checkBox.setOnCheckedChangeListener { _, checked ->
                 onChecked(checked)
@@ -63,5 +80,21 @@ class RoutineAdapter(
         private companion object {
             const val COMPLETED_TEXT_ALPHA = 110
         }
+    }
+}
+
+private fun RepeatType.displayText(): String {
+    return when (this) {
+        RepeatType.Daily -> "\uB9E4\uC77C"
+        RepeatType.Weekly,
+        RepeatType.Monthly -> "\uB9E4\uC8FC"
+    }
+}
+
+private fun RepeatType.nextToggle(): RepeatType {
+    return when (this) {
+        RepeatType.Daily -> RepeatType.Weekly
+        RepeatType.Weekly,
+        RepeatType.Monthly -> RepeatType.Daily
     }
 }

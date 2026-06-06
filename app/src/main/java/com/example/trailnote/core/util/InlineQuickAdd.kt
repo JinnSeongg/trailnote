@@ -11,11 +11,12 @@ import com.example.trailnote.R
 object InlineQuickAdd {
     fun isVisible(container: View): Boolean = container.visibility == View.VISIBLE
 
-    fun show(container: View, hint: String) {
+    fun show(container: View, hint: String, initialText: String = "") {
         val editText = container.findViewById<EditText>(R.id.quickAddEditText)
         container.visibility = View.VISIBLE
         editText.hint = hint
-        editText.setText("")
+        editText.setText(initialText)
+        editText.setSelection(editText.text.length)
         editText.requestFocus()
         editText.post {
             val imm = editText.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager

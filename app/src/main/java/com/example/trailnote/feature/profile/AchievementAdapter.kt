@@ -19,7 +19,7 @@ class AchievementAdapter(
 
     class ViewHolder(private val binding: ItemAchievementBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: Achievement) {
-            binding.iconText.text = if (item.isUnlocked) "★" else "●"
+            binding.iconText.text = item.iconText
             binding.titleText.text = item.title
         }
     }

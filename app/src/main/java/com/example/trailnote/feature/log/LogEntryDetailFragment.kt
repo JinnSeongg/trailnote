@@ -6,8 +6,11 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.PopupMenu
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
+import com.example.trailnote.R
 import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.InMemoryDataStore
 import com.example.trailnote.databinding.FragmentLogEntryDetailBinding
@@ -31,7 +34,13 @@ class LogEntryDetailFragment : Fragment() {
         val entry = InMemoryDataStore.getLogEntry(entryId) ?: return
         val current = binding ?: return
 
-        current.root.setHeader("\uAE30\uB85D", action = "\u00B7\u00B7\u00B7", showBack = true, onBack = { findNavController().popBackStack() })
+        current.root.setHeader(
+            "\uAE30\uB85D",
+            action = "\u00B7\u00B7\u00B7",
+            showBack = true,
+            onBack = { findNavController().popBackStack() },
+            onAction = { showEntryMenu() }
+        )
         current.entryTitleEditText.setText(entry.title)
         current.contentEditText.setText(entry.content)
         updateModifiedDateText(entry)
@@ -59,6 +68,29 @@ class LogEntryDetailFragment : Fragment() {
             updatedAt = currentDate()
         ) ?: return
         updateModifiedDateText(updatedEntry)
+    }
+
+    private fun showEntryMenu() {
+        val current = binding ?: return
+        val anchor = current.root.findViewById<View>(R.id.headerAction)
+        PopupMenu(requireContext(), anchor).apply {
+            menu.add("\uC0AD\uC81C")
+            setOnMenuItemClickListener {
+                confirmDeleteEntry()
+                true
+            }
+        }.show()
+    }
+
+    private fun confirmDeleteEntry() {
+        AlertDialog.Builder(requireContext())
+            .setMessage("\uC0AD\uC81C\uD560\uAE4C\uC694?")
+            .setNegativeButton("\uCDE8\uC18C", null)
+            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
+                InMemoryDataStore.deleteLogEntry(entryId)
+                findNavController().navigateUp()
+            }
+            .show()
     }
 
     private fun updateModifiedDateText(entry: LogEntry) {

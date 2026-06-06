@@ -16,10 +16,12 @@
         android:textSize="13sp" />
 
     <TextView
-        android:id="@+id/badgeText"
+        android:id="@+id/repeatTypeText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:background="@drawable/bg_chip_unselected"
+        android:clickable="true"
+        android:focusable="true"
         android:textColor="@color/trail_text_secondary"
         android:textSize="10sp" />
 </LinearLayout>
