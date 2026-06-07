@@ -27,4 +27,16 @@
         <item name="android:textColor">@color/trail_muted</item>
         <item name="android:textSize">11sp</item>
     </style>
+
+    <style name="TrailNote.PopupMenu" parent="@style/Widget.AppCompat.PopupMenu">
+        <item name="android:popupBackground">@drawable/bg_popup_menu_rounded</item>
+        <item name="popupBackground">@drawable/bg_popup_menu_rounded</item>
+    </style>
+
+    <style name="TrailNote.PopupMenuTheme" parent="@style/ThemeOverlay.AppCompat.Light">
+        <item name="android:popupMenuStyle">@style/TrailNote.PopupMenu</item>
+        <item name="popupMenuStyle">@style/TrailNote.PopupMenu</item>
+        <item name="android:popupBackground">@drawable/bg_popup_menu_rounded</item>
+        <item name="popupBackground">@drawable/bg_popup_menu_rounded</item>
+    </style>
 </resources>

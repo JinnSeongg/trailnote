@@ -75,6 +75,11 @@ object InMemoryDataStore {
         return profileSummary
     }
 
+    fun updateFeaturedAchievement(achievementId: String): ProfileSummary {
+        profileSummary = profileSummary.copy(featuredAchievementId = achievementId)
+        return profileSummary
+    }
+
     fun addTodayWork(title: String): Task {
         val task = Task(nextId(todayWorks.map { it.id }), title, false)
         todayWorks.add(task)

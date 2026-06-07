@@ -39,4 +39,20 @@
         android:background="@drawable/bg_profile_small_button"
         android:textColor="@color/trail_text_secondary"
         android:textSize="10sp" />
+
+    <TextView
+        android:id="@+id/representativeText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:background="@drawable/bg_button_black_rounded"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:text="&#45824;&#54364;"
+        android:textColor="@color/white"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
 </LinearLayout>

@@ -5,10 +5,8 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.example.trailnote.R
 import androidx.navigation.fragment.findNavController
@@ -18,7 +16,9 @@ import com.example.trailnote.core.selection.MoveTarget
 import com.example.trailnote.core.selection.MoveTargetDialogFragment
 import com.example.trailnote.core.selection.RecyclerDragSelectionHelper
 import com.example.trailnote.core.selection.SelectionState
+import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
+import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.setupTwoLineLimitedDescriptionEditText
 import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.InMemoryDataStore
@@ -138,18 +138,14 @@ class MilestoneDetailFragment : Fragment() {
     private fun confirmDeleteSelectedShortTasks() {
         val ids = selectionController.selectedItemIds.toList()
         if (ids.isEmpty()) return
-        AlertDialog.Builder(requireContext())
-            .setMessage("\uC120\uD0DD\uD55C \uD56D\uBAA9\uC744 \uC0AD\uC81C\uD560\uAE4C\uC694?")
-            .setNegativeButton("\uCDE8\uC18C", null)
-            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
-                ids.forEach { InMemoryDataStore.deleteShortTask(it) }
-                selectionController.exit()
-                val tasks = InMemoryDataStore.getShortTasksByMilestone(milestoneId)
-                shortTaskAdapter.submitList(tasks)
-                binding?.emptyText?.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
-                binding?.shortTaskList?.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
-            }
-            .show()
+        DeleteConfirmDialogHelper.showMultiple(requireContext(), ids.size) {
+            ids.forEach { InMemoryDataStore.deleteShortTask(it) }
+            selectionController.exit()
+            val tasks = InMemoryDataStore.getShortTasksByMilestone(milestoneId)
+            shortTaskAdapter.submitList(tasks)
+            binding?.emptyText?.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
+            binding?.shortTaskList?.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
+        }
     }
 
     private fun attachShortTaskDragHelper() {
@@ -191,23 +187,19 @@ class MilestoneDetailFragment : Fragment() {
     private fun showMilestoneMenu() {
         val current = binding ?: return
         val anchor = current.root.findViewById<View>(R.id.headerAction)
-        PopupMenu(requireContext(), anchor).apply {
-            menu.add("\uC218\uC815")
-            menu.add("\uC0AD\uC81C")
-            setOnMenuItemClickListener { item ->
-                when (item.title.toString()) {
-                    "\uC218\uC815" -> {
-                        openTitleEdit()
-                        true
-                    }
-                    "\uC0AD\uC81C" -> {
-                        confirmDeleteMilestone()
-                        true
-                    }
-                    else -> false
+        PopupMenuHelper.show(requireContext(), anchor, listOf("\uC218\uC815", "\uC0AD\uC81C")) { title ->
+            when (title) {
+                "\uC218\uC815" -> {
+                    openTitleEdit()
+                    true
                 }
+                "\uC0AD\uC81C" -> {
+                    confirmDeleteMilestone()
+                    true
+                }
+                else -> false
             }
-        }.show()
+        }
     }
 
     private fun openTitleEdit() {
@@ -219,14 +211,11 @@ class MilestoneDetailFragment : Fragment() {
     }
 
     private fun confirmDeleteMilestone() {
-        AlertDialog.Builder(requireContext())
-            .setMessage("\uC0AD\uC81C\uD560\uAE4C\uC694?")
-            .setNegativeButton("\uCDE8\uC18C", null)
-            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
-                InMemoryDataStore.deleteMilestone(milestoneId)
-                findNavController().navigateUp()
-            }
-            .show()
+        val milestoneTitle = InMemoryDataStore.getMilestone(milestoneId)?.title
+        DeleteConfirmDialogHelper.showSingle(requireContext(), milestoneTitle) {
+            InMemoryDataStore.deleteMilestone(milestoneId)
+            findNavController().navigateUp()
+        }
     }
 
     override fun onDestroyView() {

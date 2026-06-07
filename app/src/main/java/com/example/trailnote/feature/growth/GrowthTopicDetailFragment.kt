@@ -5,10 +5,8 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.example.trailnote.R
 import androidx.navigation.fragment.findNavController
@@ -18,7 +16,9 @@ import com.example.trailnote.core.selection.MoveTarget
 import com.example.trailnote.core.selection.MoveTargetDialogFragment
 import com.example.trailnote.core.selection.RecyclerDragSelectionHelper
 import com.example.trailnote.core.selection.SelectionState
+import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
+import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.setupTwoLineLimitedDescriptionEditText
 import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.InMemoryDataStore
@@ -135,15 +135,11 @@ class GrowthTopicDetailFragment : Fragment() {
     private fun confirmDeleteSelectedRoutines() {
         val ids = selectionController.selectedItemIds.toList()
         if (ids.isEmpty()) return
-        AlertDialog.Builder(requireContext())
-            .setMessage("\uC120\uD0DD\uD55C \uD56D\uBAA9\uC744 \uC0AD\uC81C\uD560\uAE4C\uC694?")
-            .setNegativeButton("\uCDE8\uC18C", null)
-            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
-                ids.forEach { InMemoryDataStore.deleteRoutine(it) }
-                selectionController.exit()
-                renderRoutines()
-            }
-            .show()
+        DeleteConfirmDialogHelper.showMultiple(requireContext(), ids.size) {
+            ids.forEach { InMemoryDataStore.deleteRoutine(it) }
+            selectionController.exit()
+            renderRoutines()
+        }
     }
 
     private fun showMoveRoutineDialog() {
@@ -184,23 +180,19 @@ class GrowthTopicDetailFragment : Fragment() {
     private fun showTopicMenu() {
         val current = binding ?: return
         val anchor = current.root.findViewById<View>(R.id.headerAction)
-        PopupMenu(requireContext(), anchor).apply {
-            menu.add("\uC218\uC815")
-            menu.add("\uC0AD\uC81C")
-            setOnMenuItemClickListener { item ->
-                when (item.title.toString()) {
-                    "\uC218\uC815" -> {
-                        openTitleEdit()
-                        true
-                    }
-                    "\uC0AD\uC81C" -> {
-                        confirmDeleteTopic()
-                        true
-                    }
-                    else -> false
+        PopupMenuHelper.show(requireContext(), anchor, listOf("\uC218\uC815", "\uC0AD\uC81C")) { title ->
+            when (title) {
+                "\uC218\uC815" -> {
+                    openTitleEdit()
+                    true
                 }
+                "\uC0AD\uC81C" -> {
+                    confirmDeleteTopic()
+                    true
+                }
+                else -> false
             }
-        }.show()
+        }
     }
 
     private fun openTitleEdit() {
@@ -212,14 +204,11 @@ class GrowthTopicDetailFragment : Fragment() {
     }
 
     private fun confirmDeleteTopic() {
-        AlertDialog.Builder(requireContext())
-            .setMessage("\uC0AD\uC81C\uD560\uAE4C\uC694?")
-            .setNegativeButton("\uCDE8\uC18C", null)
-            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
-                InMemoryDataStore.deleteGrowthTopic(topicId)
-                findNavController().navigateUp()
-            }
-            .show()
+        val topicTitle = InMemoryDataStore.getGrowthTopic(topicId)?.title
+        DeleteConfirmDialogHelper.showSingle(requireContext(), topicTitle) {
+            InMemoryDataStore.deleteGrowthTopic(topicId)
+            findNavController().navigateUp()
+        }
     }
 
     override fun onDestroyView() {

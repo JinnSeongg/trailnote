@@ -49,11 +49,17 @@ class ProfileFragment : Fragment() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        bindProfileHeader()
+    }
+
     private fun bindProfileHeader() {
         val current = binding ?: return
         val summary = InMemoryDataStore.getProfileSummary()
         val featuredAchievement = InMemoryDataStore.getAchievements()
             .firstOrNull { it.id == summary.featuredAchievementId }
+            ?: InMemoryDataStore.getAchievements().firstOrNull { it.isUnlocked }
             ?: InMemoryDataStore.getAchievements().firstOrNull()
 
         current.avatarText.text = if (summary.avatarVariant == 0) "\u25CF" else "\u25C6"

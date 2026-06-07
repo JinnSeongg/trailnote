@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AlertDialog
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
@@ -17,6 +16,7 @@ import com.example.trailnote.core.selection.MoveTarget
 import com.example.trailnote.core.selection.MoveTargetDialogFragment
 import com.example.trailnote.core.selection.RecyclerDragSelectionHelper
 import com.example.trailnote.core.selection.SelectionState
+import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.InMemoryDataStore
@@ -157,17 +157,13 @@ class ProjectFragment : Fragment() {
     private fun confirmDeleteSelectedProjects() {
         val ids = selectionController.selectedItemIds.toList()
         if (ids.isEmpty()) return
-        AlertDialog.Builder(requireContext())
-            .setMessage("\uC120\uD0DD\uD55C \uD56D\uBAA9\uC744 \uC0AD\uC81C\uD560\uAE4C\uC694?")
-            .setNegativeButton("\uCDE8\uC18C", null)
-            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
-                ids.forEach { InMemoryDataStore.deleteProject(it) }
-                knownCategories.clear()
-                knownCategories.addAll(InMemoryDataStore.getProjects().map { it.category }.distinct())
-                selectionController.exit()
-                renderProjects()
-            }
-            .show()
+        DeleteConfirmDialogHelper.showMultiple(requireContext(), ids.size) {
+            ids.forEach { InMemoryDataStore.deleteProject(it) }
+            knownCategories.clear()
+            knownCategories.addAll(InMemoryDataStore.getProjects().map { it.category }.distinct())
+            selectionController.exit()
+            renderProjects()
+        }
     }
 
     private fun showMoveProjectDialog() {

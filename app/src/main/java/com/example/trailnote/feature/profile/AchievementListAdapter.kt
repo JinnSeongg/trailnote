@@ -1,6 +1,7 @@
 package com.example.trailnote.feature.profile
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.example.trailnote.databinding.ItemAchievementFullBinding
@@ -41,7 +42,10 @@ class AchievementListAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val item = items[position]) {
             is AchievementListItem.SectionHeader -> (holder as HeaderViewHolder).bind(item.category)
-            is AchievementListItem.AchievementCard -> (holder as AchievementViewHolder).bind(item.achievement)
+            is AchievementListItem.AchievementCard -> (holder as AchievementViewHolder).bind(
+                item.achievement,
+                item.isRepresentative
+            )
         }
     }
 
@@ -59,10 +63,11 @@ class AchievementListAdapter(
         private val binding: ItemAchievementFullBinding,
         private val onAchievementClick: (Achievement) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(achievement: Achievement) {
+        fun bind(achievement: Achievement, isRepresentative: Boolean) {
             binding.iconText.text = achievement.iconText
             binding.titleText.text = achievement.title
             binding.gradeText.text = achievement.grade
+            binding.representativeText.visibility = if (isRepresentative) View.VISIBLE else View.GONE
             binding.root.setOnClickListener { onAchievementClick(achievement) }
         }
     }
@@ -75,5 +80,5 @@ class AchievementListAdapter(
 
 sealed class AchievementListItem {
     data class SectionHeader(val category: String) : AchievementListItem()
-    data class AchievementCard(val achievement: Achievement) : AchievementListItem()
+    data class AchievementCard(val achievement: Achievement, val isRepresentative: Boolean) : AchievementListItem()
 }

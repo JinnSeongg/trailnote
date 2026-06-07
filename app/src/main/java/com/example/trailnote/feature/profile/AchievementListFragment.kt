@@ -40,6 +40,9 @@ class AchievementListFragment : Fragment() {
         }
         current.achievementRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         current.achievementRecyclerView.adapter = adapter
+        childFragmentManager.setFragmentResultListener(AchievementDetailDialogFragment.REQUEST_KEY, viewLifecycleOwner) { _, _ ->
+            renderAchievements()
+        }
 
         bindGradeChips()
         renderAchievements()
@@ -87,11 +90,17 @@ class AchievementListFragment : Fragment() {
     }
 
     private fun toSectionItems(achievements: List<Achievement>): List<AchievementListItem> {
+        val representativeAchievementId = InMemoryDataStore.getProfileSummary().featuredAchievementId
         return achievements
             .groupBy { it.category }
             .flatMap { (category, categoryAchievements) ->
                 listOf(AchievementListItem.SectionHeader(category)) +
-                    categoryAchievements.map { AchievementListItem.AchievementCard(it) }
+                    categoryAchievements.map { achievement ->
+                        AchievementListItem.AchievementCard(
+                            achievement = achievement,
+                            isRepresentative = achievement.id == representativeAchievementId
+                        )
+                    }
             }
     }
 

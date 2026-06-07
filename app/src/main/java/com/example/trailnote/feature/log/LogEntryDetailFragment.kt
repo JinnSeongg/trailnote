@@ -6,11 +6,11 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupMenu
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.example.trailnote.R
+import com.example.trailnote.core.util.DeleteConfirmDialogHelper
+import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.InMemoryDataStore
 import com.example.trailnote.databinding.FragmentLogEntryDetailBinding
@@ -73,24 +73,18 @@ class LogEntryDetailFragment : Fragment() {
     private fun showEntryMenu() {
         val current = binding ?: return
         val anchor = current.root.findViewById<View>(R.id.headerAction)
-        PopupMenu(requireContext(), anchor).apply {
-            menu.add("\uC0AD\uC81C")
-            setOnMenuItemClickListener {
-                confirmDeleteEntry()
-                true
-            }
-        }.show()
+        PopupMenuHelper.show(requireContext(), anchor, listOf("\uC0AD\uC81C")) {
+            confirmDeleteEntry()
+            true
+        }
     }
 
     private fun confirmDeleteEntry() {
-        AlertDialog.Builder(requireContext())
-            .setMessage("\uC0AD\uC81C\uD560\uAE4C\uC694?")
-            .setNegativeButton("\uCDE8\uC18C", null)
-            .setPositiveButton("\uC0AD\uC81C") { _, _ ->
-                InMemoryDataStore.deleteLogEntry(entryId)
-                findNavController().navigateUp()
-            }
-            .show()
+        val entryTitle = InMemoryDataStore.getLogEntry(entryId)?.title
+        DeleteConfirmDialogHelper.showSingle(requireContext(), entryTitle) {
+            InMemoryDataStore.deleteLogEntry(entryId)
+            findNavController().navigateUp()
+        }
     }
 
     private fun updateModifiedDateText(entry: LogEntry) {
