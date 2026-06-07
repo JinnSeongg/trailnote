@@ -556,6 +556,13 @@ class TrailNoteRepository(
         return updated.toDomain()
     }
 
+    suspend fun updateRoutineFixedState(routineId: String, isFixed: Boolean): Routine? {
+        val updatedRows = growthDao.updateRoutineFixedState(routineId, isFixed, currentDate())
+        if (updatedRows == 0) return null
+        reconcileDailyHomeState(currentDate())
+        return growthDao.getRoutineById(routineId)?.toDomain()
+    }
+
     suspend fun deleteGrowthArea(areaId: String) = growthDao.deleteGrowthAreaById(areaId)
     suspend fun deleteGrowthTopic(topicId: String) = growthDao.deleteGrowthTopicById(topicId)
     suspend fun deleteRoutine(routineId: String) = growthDao.deleteRoutineById(routineId)
@@ -622,11 +629,13 @@ class TrailNoteRepository(
     }
 
     suspend fun getTodayRandomRoutines(date: String): List<Routine> {
-        val state = getOrCreateDailyHomeState(date)
+        val state = reconcileDailyHomeState(date) ?: getOrCreateDailyHomeState(date)
         val selectedIds = state.selectedRoutineIds.toIdList()
         if (selectedIds.isEmpty()) return emptyList()
         val routinesById = growthDao.getRoutinesByIds(selectedIds).associateBy { it.id }
-        return selectedIds.mapNotNull { routinesById[it]?.toDomain() }
+        return selectedIds.mapNotNull { routinesById[it] }
+            .filter { it.isActive && !it.isFixed }
+            .map { it.toDomain() }
     }
 
     suspend fun getOrCreateDailyHomeState(date: String): DailyHomeStateEntity {
@@ -643,6 +652,40 @@ class TrailNoteRepository(
         )
         homeDao.insertOrUpdateDailyHomeState(state)
         return state
+    }
+
+    private suspend fun reconcileDailyHomeState(date: String): DailyHomeStateEntity? {
+        val state = homeDao.getDailyHomeState(date) ?: return null
+        val settings = getHomeGoalSettings()
+        val targetCount = settings.randomTodayGoalCount.coerceAtLeast(0)
+        val selectedIds = state.selectedRoutineIds.toIdList()
+        val selectedRoutines = if (selectedIds.isEmpty()) {
+            emptyMap()
+        } else {
+            growthDao.getRoutinesByIds(selectedIds).associateBy { it.id }
+        }
+        val activeRandomIds = selectedIds
+            .mapNotNull { selectedRoutines[it] }
+            .filter { it.isActive && !it.isFixed }
+            .map { it.id }
+            .take(targetCount)
+        val fillIds = if (activeRandomIds.size < targetCount) {
+            growthDao.getRandomCandidateRoutines()
+                .filterNot { it.id in activeRandomIds }
+                .shuffled()
+                .take(targetCount - activeRandomIds.size)
+                .map { it.id }
+        } else {
+            emptyList()
+        }
+        val reconciledIds = activeRandomIds + fillIds
+        if (reconciledIds == selectedIds) return state
+        val updated = state.copy(
+            selectedRoutineIds = reconciledIds.joinToString(ID_SEPARATOR),
+            lastResetAt = currentDate()
+        )
+        homeDao.insertOrUpdateDailyHomeState(updated)
+        return updated
     }
 
     suspend fun getPreference(key: String): String? {

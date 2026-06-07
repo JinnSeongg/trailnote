@@ -69,9 +69,9 @@ class GrowthTopicDetailFragment : Fragment() {
                     reloadTopic()
                 }
             },
-            onRepeatTypeChange = { routine, repeatType ->
+            onFixedStateChange = { routine, isFixed ->
                 viewLifecycleOwner.lifecycleScope.launch {
-                    repository.updateRoutineRepeatType(routine.id, repeatType)
+                    repository.updateRoutineFixedState(routine.id, isFixed)
                     reloadTopic()
                 }
             },

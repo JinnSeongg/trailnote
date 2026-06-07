@@ -72,6 +72,9 @@ interface GrowthDao {
     @Update
     suspend fun updateRoutine(routine: RoutineEntity)
 
+    @Query("UPDATE routines SET isFixed = :isFixed, updatedAt = :updatedAt WHERE id = :routineId")
+    suspend fun updateRoutineFixedState(routineId: String, isFixed: Boolean, updatedAt: String): Int
+
     @Delete
     suspend fun deleteGrowthArea(area: GrowthAreaEntity)
 

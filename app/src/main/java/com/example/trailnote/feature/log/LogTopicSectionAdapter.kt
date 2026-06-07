@@ -1,6 +1,7 @@
 package com.example.trailnote.feature.log
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -15,6 +16,7 @@ class LogTopicSectionAdapter(
     private val topics: List<LogTopic>,
     private val entriesForTopic: (String) -> List<LogEntry>,
     private val onTopicClick: (LogTopic) -> Unit,
+    private val onTopicLongClick: (LogTopic, View) -> Unit = { _, _ -> },
     private val onEntryClick: (LogEntry) -> Unit,
     private val onEntryLongClick: (LogEntry) -> Unit = {},
     private val isEntrySelected: (LogEntry) -> Boolean = { false },
@@ -31,6 +33,7 @@ class LogTopicSectionAdapter(
             topic = topics[position],
             entries = entriesForTopic(topics[position].id),
             onTopicClick = onTopicClick,
+            onTopicLongClick = onTopicLongClick,
             onEntryClick = onEntryClick,
             onEntryLongClick = onEntryLongClick,
             isEntrySelected = isEntrySelected,
@@ -51,6 +54,7 @@ class LogTopicSectionAdapter(
             topic: LogTopic,
             entries: List<LogEntry>,
             onTopicClick: (LogTopic) -> Unit,
+            onTopicLongClick: (LogTopic, View) -> Unit,
             onEntryClick: (LogEntry) -> Unit,
             onEntryLongClick: (LogEntry) -> Unit,
             isEntrySelected: (LogEntry) -> Boolean,
@@ -61,7 +65,10 @@ class LogTopicSectionAdapter(
             binding.topicTitleText.text = topic.title
             binding.topicTitleText.setBackgroundResource(android.R.color.transparent)
             binding.topicTitleText.setOnClickListener { onTopicClick(topic) }
-            binding.topicTitleText.setOnLongClickListener(null)
+            binding.topicTitleText.setOnLongClickListener {
+                onTopicLongClick(topic, it)
+                true
+            }
             binding.entryPreviewList.layoutManager = LinearLayoutManager(binding.root.context)
             val adapter = LogEntryPreviewAdapter(entries.take(6), onEntryClick, onEntryLongClick, isEntrySelected)
             binding.entryPreviewList.adapter = adapter

@@ -67,6 +67,7 @@ class LogFragment : Fragment() {
                     is QuickAddMode.Topic -> repository.addLogTopic(mode.categoryId, text)
                     is QuickAddMode.Entry -> repository.addLogEntry(mode.topicId, text)
                     is QuickAddMode.EditCategory -> repository.updateLogCategoryName(mode.categoryId, text)
+                    is QuickAddMode.EditTopic -> repository.updateLogTopicTitle(mode.topicId, text)
                     null -> return@launch
                 }
                 quickAddMode = null
@@ -158,6 +159,7 @@ class LogFragment : Fragment() {
             topics = visibleTopics,
             entriesForTopic = { topicId -> entries.filter { it.topicId == topicId } },
             onTopicClick = ::handleTopicClick,
+            onTopicLongClick = ::showTopicMenu,
             onEntryClick = ::handleEntryClick,
             onEntryLongClick = ::handleEntryLongClick,
             isEntrySelected = ::isEntrySelected,
@@ -224,6 +226,34 @@ class LogFragment : Fragment() {
                             viewLifecycleOwner.lifecycleScope.launch {
                                 repository.deleteLogCategory(category.id)
                                 selectedCategoryId = null
+                                quickAddMode = null
+                                reloadLogs()
+                            }
+                        }
+                    )
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun showTopicMenu(topic: LogTopic, anchor: View) {
+        if (selectionController.isInSelectionMode) return
+        PopupMenuHelper.show(requireContext(), anchor, listOf("\uC218\uC815", "\uC0AD\uC81C")) { title ->
+            when (title) {
+                "\uC218\uC815" -> {
+                    openQuickAdd(QuickAddMode.EditTopic(topic.id), "\uC8FC\uC81C \uC785\uB825", topic.title)
+                    true
+                }
+                "\uC0AD\uC81C" -> {
+                    DeleteConfirmDialogHelper.showCustom(
+                        context = requireContext(),
+                        title = "\uC774 \uC8FC\uC81C\uB97C \uC0AD\uC81C\uD560\uAE4C\uC694?",
+                        message = "\uC774 \uC8FC\uC81C\uC5D0 \uD3EC\uD568\uB41C \uAE30\uB85D\uB3C4 \uD568\uAED8 \uC0AD\uC81C\uB429\uB2C8\uB2E4. \uC774 \uC791\uC5C5\uC740 \uB418\uB3CC\uB9B4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+                        onDelete = {
+                            viewLifecycleOwner.lifecycleScope.launch {
+                                repository.deleteLogTopic(topic.id)
                                 quickAddMode = null
                                 reloadLogs()
                             }
@@ -346,5 +376,6 @@ class LogFragment : Fragment() {
         data class Topic(val categoryId: String) : QuickAddMode()
         data class Entry(val topicId: String) : QuickAddMode()
         data class EditCategory(val categoryId: String) : QuickAddMode()
+        data class EditTopic(val topicId: String) : QuickAddMode()
     }
 }

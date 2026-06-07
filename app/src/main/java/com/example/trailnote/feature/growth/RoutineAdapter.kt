@@ -7,7 +7,6 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.example.trailnote.R
 import com.example.trailnote.databinding.ItemRoutineBinding
-import com.example.trailnote.domain.model.RepeatType
 import com.example.trailnote.domain.model.Routine
 
 class RoutineAdapter(
@@ -15,7 +14,7 @@ class RoutineAdapter(
     private val onClick: (Routine) -> Unit = {},
     private val onLongClick: (Routine) -> Unit = {},
     private val onDoneChange: (Routine, Boolean) -> Unit = { _, _ -> },
-    private val onRepeatTypeChange: (Routine, RepeatType) -> Unit = { _, _ -> },
+    private val onFixedStateChange: (Routine, Boolean) -> Unit = { _, _ -> },
     private val isSelectionMode: () -> Boolean = { false },
     private val isSelected: (Routine) -> Boolean = { false }
 ) : RecyclerView.Adapter<RoutineAdapter.ViewHolder>() {
@@ -40,13 +39,13 @@ class RoutineAdapter(
                     onDoneChange(updated, checked)
                 }
             },
-            onRepeatToggle = {
+            onFixedToggle = {
                 val adapterPosition = holder.bindingAdapterPosition
                 if (adapterPosition != RecyclerView.NO_POSITION) {
-                    val nextRepeatType = items[adapterPosition].repeatType.nextToggle()
-                    val updated = items[adapterPosition].copy(repeatType = nextRepeatType)
+                    val nextIsFixed = !items[adapterPosition].isFixed
+                    val updated = items[adapterPosition].copy(isFixed = nextIsFixed)
                     items[adapterPosition] = updated
-                    onRepeatTypeChange(updated, nextRepeatType)
+                    onFixedStateChange(updated, nextIsFixed)
                     notifyItemChanged(adapterPosition)
                 }
             }
@@ -78,13 +77,13 @@ class RoutineAdapter(
             isSelectionMode: () -> Boolean,
             isSelected: (Routine) -> Boolean,
             onChecked: (Boolean) -> Unit,
-            onRepeatToggle: () -> Unit
+            onFixedToggle: () -> Unit
         ) {
             binding.checkBox.setOnClickListener(null)
             binding.repeatTypeText.setOnClickListener(null)
             binding.checkBox.text = item.title
             binding.checkBox.isChecked = item.isDoneToday
-            binding.repeatTypeText.text = item.repeatType.displayText()
+            binding.repeatTypeText.text = item.fixedStateText()
             binding.root.setBackgroundResource(if (isSelected(item)) R.drawable.bg_short_task_selected else android.R.color.transparent)
             applyCompletionStyle(item.isDoneToday)
 
@@ -109,7 +108,7 @@ class RoutineAdapter(
                 if (isSelectionMode()) {
                     onItemClick(item)
                 } else {
-                    onRepeatToggle()
+                    onFixedToggle()
                 }
             }
         }
@@ -131,18 +130,4 @@ class RoutineAdapter(
     }
 }
 
-private fun RepeatType.displayText(): String {
-    return when (this) {
-        RepeatType.Daily -> "\uB9E4\uC77C"
-        RepeatType.Weekly,
-        RepeatType.Monthly -> "\uB9E4\uC8FC"
-    }
-}
-
-private fun RepeatType.nextToggle(): RepeatType {
-    return when (this) {
-        RepeatType.Daily -> RepeatType.Weekly
-        RepeatType.Weekly,
-        RepeatType.Monthly -> RepeatType.Daily
-    }
-}
+private fun Routine.fixedStateText(): String = if (isFixed) "\uACE0\uC815" else "\uC77C\uBC18"
