@@ -2,6 +2,7 @@ package com.example.trailnote.core.util
 
 import android.view.View
 import android.widget.TextView
+import com.example.trailnote.MainActivity
 import com.example.trailnote.R
 
 fun View.setHeader(
@@ -23,7 +24,13 @@ fun View.setHeader(
         setOnClickListener { onMore?.invoke() }
     }
     findViewById<TextView>(R.id.menuText)?.apply {
-        text = if (showBack) "‹" else "☰"
-        setOnClickListener { onBack?.invoke() }
+        text = if (showBack) "\u2039" else "\u2630"
+        setOnClickListener {
+            if (showBack) {
+                onBack?.invoke()
+            } else {
+                (context as? MainActivity)?.openDrawer() ?: onBack?.invoke()
+            }
+        }
     }
 }

@@ -14,6 +14,7 @@ import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.local.db.DatabaseSeeder
 import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentHomeBinding
+import com.example.trailnote.databinding.ItemStatCardBinding
 import com.example.trailnote.domain.model.Routine
 import com.example.trailnote.domain.model.Task
 import kotlinx.coroutines.launch
@@ -135,9 +136,14 @@ class HomeFragment : Fragment() {
         fixedGoalAdapter.submitList(fixedGoals)
         todayGoalAdapter.submitList(todayGoals)
         current.dateText.text = todayDate
-        current.statOne.valueText.text = todayWorks.count { it.isDone }.toString()
-        current.statTwo.valueText.text = fixedGoals.count { it.isDone }.toString()
-        current.statThree.valueText.text = todayGoals.size.toString()
+        renderStat(current.statOne, todayWorks.count { it.isDone }, todayWorks.size)
+        renderStat(current.statTwo, fixedGoals.count { it.isDone }, fixedGoals.size)
+        renderStat(current.statThree, todayGoals.count { it.isDone }, todayGoals.size)
+    }
+
+    private fun renderStat(stat: ItemStatCardBinding, doneCount: Int, totalCount: Int) {
+        val percent = if (totalCount == 0) 0 else doneCount * 100 / totalCount
+        stat.valueText.text = "$percent%"
     }
 
     override fun onDestroyView() {

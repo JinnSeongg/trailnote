@@ -82,7 +82,7 @@
             style="@style/TrailText.Section"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="고정 루틴" />
+            android:text="고정 목표" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/fixedGoalList"
@@ -96,7 +96,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/section_gap"
-            android:text="주간 루틴" />
+            android:text="오늘의 목표" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/todayGoalList"

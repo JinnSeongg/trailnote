@@ -1,8 +1,13 @@
 package com.example.trailnote
 
 import android.os.Bundle
+import android.view.Gravity
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
@@ -56,6 +61,22 @@ class MainActivity : AppCompatActivity() {
         binding.selectionActionBar.deleteSelectionButton.setOnClickListener {
             selectionDeleteHandler?.invoke()
         }
+        setupDrawerMenu()
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                binding.drawerLayout.closeDrawer(Gravity.LEFT)
+            }
+        }.also { callback ->
+            binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+                override fun onDrawerOpened(drawerView: android.view.View) {
+                    callback.isEnabled = true
+                }
+
+                override fun onDrawerClosed(drawerView: android.view.View) {
+                    callback.isEnabled = false
+                }
+            })
+        })
 
         navController.addOnDestinationChangedListener { _, destination, _ ->
             selectionController.exit()
@@ -79,6 +100,26 @@ class MainActivity : AppCompatActivity() {
     fun setSelectionMoveHandler(handler: (() -> Unit)?) {
         selectionMoveHandler = handler
         binding.selectionActionBar.moveSelectionButton.isVisible = handler != null && selectionController.isInSelectionMode
+    }
+
+    fun openDrawer() {
+        binding.drawerLayout.openDrawer(Gravity.LEFT)
+    }
+
+    private fun setupDrawerMenu() {
+        bindDrawerItem(R.id.todayGoalCountMenu, "오늘 목표 수 설정 준비 중")
+        bindDrawerItem(R.id.themeMenu, "테마 변경 준비 중")
+        bindDrawerItem(R.id.notificationMenu, "알림 준비 중")
+        bindDrawerItem(R.id.dataMenu, "데이터 준비 중")
+        bindDrawerItem(R.id.helpMenu, "도움말 준비 중")
+        bindDrawerItem(R.id.aboutMenu, "정보 준비 중")
+    }
+
+    private fun bindDrawerItem(viewId: Int, message: String) {
+        binding.root.findViewById<TextView>(viewId).setOnClickListener {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            binding.drawerLayout.closeDrawer(Gravity.LEFT)
+        }
     }
 
     private fun renderSelectionState(state: SelectionState) {
