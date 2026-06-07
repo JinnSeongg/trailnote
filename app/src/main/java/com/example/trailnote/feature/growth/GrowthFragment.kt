@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import androidx.activity.OnBackPressedCallback
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.trailnote.MainActivity
@@ -16,14 +17,17 @@ import com.example.trailnote.core.selection.SelectionState
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.setHeader
-import com.example.trailnote.data.InMemoryDataStore
+import com.example.trailnote.data.local.db.DatabaseSeeder
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentGrowthBinding
 import com.example.trailnote.domain.model.GrowthArea
+import kotlinx.coroutines.launch
 
 class GrowthFragment : Fragment() {
     private var binding: FragmentGrowthBinding? = null
     private lateinit var growthAreaAdapter: GrowthAreaAdapter
     private var areaDragSelectionHelper: RecyclerDragSelectionHelper? = null
+    private var areas: List<GrowthArea> = emptyList()
     private val selectionStateListener: (SelectionState) -> Unit = {
         if (::growthAreaAdapter.isInitialized) growthAreaAdapter.notifyDataSetChanged()
     }
@@ -40,7 +44,7 @@ class GrowthFragment : Fragment() {
         selectionController.addStateListener(selectionStateListener)
         current.growthAreaList.layoutManager = LinearLayoutManager(requireContext())
         growthAreaAdapter = GrowthAreaAdapter(
-            items = InMemoryDataStore.getGrowthAreas(),
+            items = emptyList(),
             onClick = ::handleAreaClick,
             onLongClick = ::handleAreaLongClick,
             isSelected = ::isAreaSelected
@@ -48,7 +52,10 @@ class GrowthFragment : Fragment() {
         current.growthAreaList.adapter = growthAreaAdapter
         attachAreaDragHelper()
         InlineQuickAdd.bind(current.growthQuickAdd.root, onDismiss = { showFab() }) { title ->
-            growthAreaAdapter.addItem(InMemoryDataStore.addGrowthArea(title))
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.addGrowthArea(title)
+                reloadAreas()
+            }
         }
         current.addButton.setOnClickListener {
             if (!selectionController.isInSelectionMode) {
@@ -65,6 +72,14 @@ class GrowthFragment : Fragment() {
                 callback.isEnabled = InlineQuickAdd.isVisible(quickAdd)
             }
         })
+        reloadAreas()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (binding != null && ::growthAreaAdapter.isInitialized) {
+            reloadAreas()
+        }
     }
 
     private fun handleAreaClick(area: GrowthArea) {
@@ -98,9 +113,11 @@ class GrowthFragment : Fragment() {
         val ids = selectionController.selectedItemIds.toList()
         if (ids.isEmpty()) return
         DeleteConfirmDialogHelper.showMultiple(requireContext(), ids.size) {
-            ids.forEach { InMemoryDataStore.deleteGrowthArea(it) }
-            selectionController.exit()
-            growthAreaAdapter.submitList(InMemoryDataStore.getGrowthAreas())
+            viewLifecycleOwner.lifecycleScope.launch {
+                ids.forEach { repository.deleteGrowthArea(it) }
+                selectionController.exit()
+                reloadAreas()
+            }
         }
     }
 
@@ -118,6 +135,14 @@ class GrowthFragment : Fragment() {
 
     private fun showFab() {
         binding?.addButton?.visibility = View.VISIBLE
+    }
+
+    private fun reloadAreas() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            DatabaseSeeder.seedIfNeeded(requireContext().applicationContext)
+            areas = repository.getGrowthAreas()
+            growthAreaAdapter.submitList(areas)
+        }
     }
 
     private fun attachAreaDragHelper() {
@@ -148,6 +173,9 @@ class GrowthFragment : Fragment() {
 
     private val selectionController
         get() = (requireActivity() as MainActivity).selectionController
+
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
 
     private fun areaSelectionScope(): String = "growth-areas"
 }

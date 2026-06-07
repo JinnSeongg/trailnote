@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.trailnote.MainActivity
@@ -20,10 +21,15 @@ import com.example.trailnote.core.selection.SelectionState
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
+import com.example.trailnote.core.util.ProgressCalculator
 import com.example.trailnote.core.util.setupTwoLineLimitedDescriptionEditText
 import com.example.trailnote.core.util.setHeader
-import com.example.trailnote.data.InMemoryDataStore
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentProjectDetailBinding
+import com.example.trailnote.domain.model.Milestone
+import com.example.trailnote.domain.model.Project
+import com.example.trailnote.domain.model.ShortTask
+import kotlinx.coroutines.launch
 
 class ProjectDetailFragment : Fragment() {
     private var binding: FragmentProjectDetailBinding? = null
@@ -32,6 +38,10 @@ class ProjectDetailFragment : Fragment() {
     private var descriptionWatcher: TextWatcher? = null
     private var quickAddMode: QuickAddMode = QuickAddMode.Milestone
     private var milestoneDragSelectionHelper: RecyclerDragSelectionHelper? = null
+    private var project: Project? = null
+    private var projects: List<Project> = emptyList()
+    private var milestones: List<Milestone> = emptyList()
+    private var shortTasks: List<ShortTask> = emptyList()
     private val selectionStateListener: (SelectionState) -> Unit = {
         if (::milestoneAdapter.isInitialized) milestoneAdapter.notifyDataSetChanged()
     }
@@ -44,48 +54,38 @@ class ProjectDetailFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         projectId = requireArguments().getString("projectId").orEmpty()
-        val project = InMemoryDataStore.getProject(projectId) ?: return
-        val milestones = InMemoryDataStore.getMilestonesByProject(projectId)
         val current = binding ?: return
-        current.root.setHeader(
-            project.title,
-            action = "\u00B7\u00B7\u00B7",
-            showBack = true,
-            onBack = { findNavController().popBackStack() },
-            onAction = { showProjectMenu() }
-        )
-        current.descriptionText.setText(project.description)
         descriptionWatcher = current.descriptionText.setupTwoLineLimitedDescriptionEditText { text ->
-            InMemoryDataStore.updateProjectDescription(projectId, text)
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.updateProjectDescription(projectId, text)
+            }
         }
 
         milestoneAdapter = MilestoneAdapter(
-            milestones,
+            emptyList(),
             onClick = ::handleMilestoneClick,
             onLongClick = ::handleMilestoneLongClick,
-            isSelected = ::isMilestoneSelected
+            isSelected = ::isMilestoneSelected,
+            taskSummaryProvider = ::taskSummary
         )
         selectionController.addStateListener(selectionStateListener)
         current.milestoneList.layoutManager = LinearLayoutManager(requireContext())
         current.milestoneList.adapter = milestoneAdapter
         attachMilestoneDragHelper()
-        current.emptyText.visibility = if (milestones.isEmpty()) View.VISIBLE else View.GONE
-        current.milestoneList.visibility = if (milestones.isEmpty()) View.GONE else View.VISIBLE
 
         InlineQuickAdd.bind(current.milestoneQuickAdd.root, onDismiss = { showMilestoneFab() }) { title ->
-            when (quickAddMode) {
-                QuickAddMode.Milestone -> {
-                    milestoneAdapter.addItem(InMemoryDataStore.addMilestone(projectId, title))
-                    current.emptyText.visibility = View.GONE
-                    current.milestoneList.visibility = View.VISIBLE
-                }
-                QuickAddMode.ProjectTitle -> {
-                    InMemoryDataStore.updateProjectTitle(projectId, title)?.let { updated ->
-                        current.root.findViewById<TextView>(R.id.headerTitle)?.text = updated.title
+            viewLifecycleOwner.lifecycleScope.launch {
+                when (quickAddMode) {
+                    QuickAddMode.Milestone -> repository.addMilestone(projectId, title)
+                    QuickAddMode.ProjectTitle -> {
+                        repository.updateProjectTitle(projectId, title)?.let { updated ->
+                            current.root.findViewById<TextView>(R.id.headerTitle)?.text = updated.title
+                        }
                     }
                 }
+                quickAddMode = QuickAddMode.Milestone
+                reloadProject()
             }
-            quickAddMode = QuickAddMode.Milestone
         }
         current.milestoneAddButton.setOnClickListener {
             quickAddMode = QuickAddMode.Milestone
@@ -106,6 +106,14 @@ class ProjectDetailFragment : Fragment() {
                 callback.isEnabled = InlineQuickAdd.isVisible(quickAdd)
             }
         })
+        reloadProject()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (binding != null && ::milestoneAdapter.isInitialized) {
+            reloadProject()
+        }
     }
 
     private fun showMilestoneFab() {
@@ -142,12 +150,11 @@ class ProjectDetailFragment : Fragment() {
         val ids = selectionController.selectedItemIds.toList()
         if (ids.isEmpty()) return
         DeleteConfirmDialogHelper.showMultiple(requireContext(), ids.size) {
-            ids.forEach { InMemoryDataStore.deleteMilestone(it) }
-            selectionController.exit()
-            val milestones = InMemoryDataStore.getMilestonesByProject(projectId)
-            milestoneAdapter.submitList(milestones)
-            binding?.emptyText?.visibility = if (milestones.isEmpty()) View.VISIBLE else View.GONE
-            binding?.milestoneList?.visibility = if (milestones.isEmpty()) View.GONE else View.VISIBLE
+            viewLifecycleOwner.lifecycleScope.launch {
+                ids.forEach { repository.deleteMilestone(it) }
+                selectionController.exit()
+                reloadProject()
+            }
         }
     }
 
@@ -170,19 +177,23 @@ class ProjectDetailFragment : Fragment() {
             title = "\uC774\uB3D9\uD560 \uD504\uB85C\uC81D\uD2B8",
             addHint = "\uC0C8 \uD504\uB85C\uC81D\uD2B8 \uC785\uB825",
             loadTargets = {
-                InMemoryDataStore.getProjects().map { project ->
+                projects.map { project ->
                     MoveTarget(project.id, project.title)
                 }
             },
-            onAddTarget = { title -> InMemoryDataStore.addProject(title) },
+            onAddTarget = { title ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.addProject(title)
+                    reloadProject()
+                }
+            },
             onTargetSelected = { target ->
                 val ids = selectionController.selectedItemIds.toList()
-                InMemoryDataStore.moveMilestonesToProject(ids, target.id)
-                selectionController.exit()
-                val milestones = InMemoryDataStore.getMilestonesByProject(projectId)
-                milestoneAdapter.submitList(milestones)
-                binding?.emptyText?.visibility = if (milestones.isEmpty()) View.VISIBLE else View.GONE
-                binding?.milestoneList?.visibility = if (milestones.isEmpty()) View.GONE else View.VISIBLE
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.moveMilestonesToProject(ids, target.id)
+                    selectionController.exit()
+                    reloadProject()
+                }
             }
         ).show(childFragmentManager, "move_milestones")
     }
@@ -207,18 +218,61 @@ class ProjectDetailFragment : Fragment() {
 
     private fun openTitleEdit() {
         val current = binding ?: return
-        val project = InMemoryDataStore.getProject(projectId) ?: return
+        val project = project ?: return
         quickAddMode = QuickAddMode.ProjectTitle
         current.milestoneFabButton.visibility = View.GONE
         InlineQuickAdd.show(current.milestoneQuickAdd.root, "\uC81C\uBAA9 \uC785\uB825", project.title)
     }
 
     private fun confirmDeleteProject() {
-        val projectTitle = InMemoryDataStore.getProject(projectId)?.title
+        val projectTitle = project?.title
         DeleteConfirmDialogHelper.showSingle(requireContext(), projectTitle) {
-            InMemoryDataStore.deleteProject(projectId)
-            findNavController().navigateUp()
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.deleteProject(projectId)
+                findNavController().navigateUp()
+            }
         }
+    }
+
+    private fun reloadProject() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            project = repository.getProjectById(projectId)
+            if (project == null) {
+                findNavController().navigateUp()
+                return@launch
+            }
+            projects = repository.getProjects()
+            milestones = repository.getMilestonesByProjectId(projectId)
+            shortTasks = repository.getShortTasks()
+            renderProject()
+        }
+    }
+
+    private fun renderProject() {
+        val current = binding ?: return
+        val currentProject = project ?: return
+        current.root.setHeader(
+            currentProject.title,
+            action = "\u00B7\u00B7\u00B7",
+            showBack = true,
+            onBack = { findNavController().popBackStack() },
+            onAction = { showProjectMenu() }
+        )
+        if (current.descriptionText.text.toString() != currentProject.description) {
+            current.descriptionText.setText(currentProject.description)
+        }
+        milestoneAdapter.submitList(milestones)
+        current.emptyText.visibility = if (milestones.isEmpty()) View.VISIBLE else View.GONE
+        current.milestoneList.visibility = if (milestones.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    private fun taskSummary(milestone: Milestone): TaskSummary {
+        val tasks = shortTasks.filter { it.milestoneId == milestone.id }
+        return TaskSummary(
+            doneCount = tasks.count { it.isDone },
+            totalCount = tasks.size,
+            progress = ProgressCalculator.milestoneProgress(tasks)
+        )
     }
 
     override fun onDestroyView() {
@@ -239,6 +293,9 @@ class ProjectDetailFragment : Fragment() {
 
     private val selectionController
         get() = (requireActivity() as MainActivity).selectionController
+
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
 
     private fun milestoneSelectionScope(): String = "project-milestones:$projectId"
 

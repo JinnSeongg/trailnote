@@ -7,14 +7,16 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import com.example.trailnote.R
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.setHeader
-import com.example.trailnote.data.InMemoryDataStore
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentLogEntryDetailBinding
 import com.example.trailnote.domain.model.LogEntry
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -22,6 +24,7 @@ import java.util.Locale
 class LogEntryDetailFragment : Fragment() {
     private var binding: FragmentLogEntryDetailBinding? = null
     private var entryId: String = ""
+    private var entry: LogEntry? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val viewBinding = FragmentLogEntryDetailBinding.inflate(inflater, container, false)
@@ -31,7 +34,6 @@ class LogEntryDetailFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         entryId = requireArguments().getString("entryId").orEmpty()
-        val entry = InMemoryDataStore.getLogEntry(entryId) ?: return
         val current = binding ?: return
 
         current.root.setHeader(
@@ -41,12 +43,7 @@ class LogEntryDetailFragment : Fragment() {
             onBack = { findNavController().popBackStack() },
             onAction = { showEntryMenu() }
         )
-        current.entryTitleEditText.setText(entry.title)
-        current.contentEditText.setText(entry.content)
-        updateModifiedDateText(entry)
-
-        current.entryTitleEditText.addTextChangedListener(editWatcher)
-        current.contentEditText.addTextChangedListener(editWatcher)
+        reloadEntry()
     }
 
     private val editWatcher = object : TextWatcher {
@@ -61,13 +58,16 @@ class LogEntryDetailFragment : Fragment() {
 
     private fun persistCurrentText() {
         val current = binding ?: return
-        val updatedEntry = InMemoryDataStore.updateLogEntry(
-            entryId = entryId,
-            title = current.entryTitleEditText.text.toString(),
-            content = current.contentEditText.text.toString(),
-            updatedAt = currentDate()
-        ) ?: return
-        updateModifiedDateText(updatedEntry)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val updatedEntry = repository.updateLogEntry(
+                entryId = entryId,
+                title = current.entryTitleEditText.text.toString(),
+                content = current.contentEditText.text.toString(),
+                updatedAt = currentDate()
+            ) ?: return@launch
+            entry = updatedEntry
+            updateModifiedDateText(updatedEntry)
+        }
     }
 
     private fun showEntryMenu() {
@@ -80,11 +80,36 @@ class LogEntryDetailFragment : Fragment() {
     }
 
     private fun confirmDeleteEntry() {
-        val entryTitle = InMemoryDataStore.getLogEntry(entryId)?.title
+        val entryTitle = entry?.title
         DeleteConfirmDialogHelper.showSingle(requireContext(), entryTitle) {
-            InMemoryDataStore.deleteLogEntry(entryId)
-            findNavController().navigateUp()
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.deleteLogEntry(entryId)
+                findNavController().navigateUp()
+            }
         }
+    }
+
+    private fun reloadEntry() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val loadedEntry = repository.getLogEntryById(entryId)
+            if (loadedEntry == null) {
+                findNavController().navigateUp()
+                return@launch
+            }
+            entry = loadedEntry
+            renderEntry(loadedEntry)
+        }
+    }
+
+    private fun renderEntry(entry: LogEntry) {
+        val current = binding ?: return
+        current.entryTitleEditText.removeTextChangedListener(editWatcher)
+        current.contentEditText.removeTextChangedListener(editWatcher)
+        current.entryTitleEditText.setText(entry.title)
+        current.contentEditText.setText(entry.content)
+        updateModifiedDateText(entry)
+        current.entryTitleEditText.addTextChangedListener(editWatcher)
+        current.contentEditText.addTextChangedListener(editWatcher)
     }
 
     private fun updateModifiedDateText(entry: LogEntry) {
@@ -99,11 +124,15 @@ class LogEntryDetailFragment : Fragment() {
         return when {
             DOT_DATE_REGEX.matches(normalized) -> normalized
             DASH_DATE_REGEX.matches(normalized) -> normalized.replace('-', '.')
+            ISO_DATE_TIME_REGEX.matches(normalized) -> normalized.take(10).replace('-', '.')
             else -> currentDate()
         }
     }
 
     private fun currentDate(): String = DATE_FORMAT.format(Date())
+
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
 
     override fun onDestroyView() {
         val current = binding
@@ -119,5 +148,6 @@ class LogEntryDetailFragment : Fragment() {
         val DATE_FORMAT = SimpleDateFormat("yyyy.MM.dd", Locale.KOREA)
         val DOT_DATE_REGEX = Regex("""\d{4}\.\d{2}\.\d{2}""")
         val DASH_DATE_REGEX = Regex("""\d{4}-\d{2}-\d{2}""")
+        val ISO_DATE_TIME_REGEX = Regex("""\d{4}-\d{2}-\d{2}T.*""")
     }
 }

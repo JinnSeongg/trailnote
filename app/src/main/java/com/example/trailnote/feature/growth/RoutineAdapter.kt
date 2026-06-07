@@ -6,7 +6,6 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.example.trailnote.R
-import com.example.trailnote.data.InMemoryDataStore
 import com.example.trailnote.databinding.ItemRoutineBinding
 import com.example.trailnote.domain.model.RepeatType
 import com.example.trailnote.domain.model.Routine
@@ -15,6 +14,8 @@ class RoutineAdapter(
     routines: List<Routine>,
     private val onClick: (Routine) -> Unit = {},
     private val onLongClick: (Routine) -> Unit = {},
+    private val onDoneChange: (Routine, Boolean) -> Unit = { _, _ -> },
+    private val onRepeatTypeChange: (Routine, RepeatType) -> Unit = { _, _ -> },
     private val isSelectionMode: () -> Boolean = { false },
     private val isSelected: (Routine) -> Boolean = { false }
 ) : RecyclerView.Adapter<RoutineAdapter.ViewHolder>() {
@@ -36,7 +37,7 @@ class RoutineAdapter(
                 if (adapterPosition != RecyclerView.NO_POSITION) {
                     val updated = items[adapterPosition].copy(isDoneToday = checked)
                     items[adapterPosition] = updated
-                    InMemoryDataStore.updateRoutineDone(updated.id, checked)
+                    onDoneChange(updated, checked)
                 }
             },
             onRepeatToggle = {
@@ -45,7 +46,7 @@ class RoutineAdapter(
                     val nextRepeatType = items[adapterPosition].repeatType.nextToggle()
                     val updated = items[adapterPosition].copy(repeatType = nextRepeatType)
                     items[adapterPosition] = updated
-                    InMemoryDataStore.updateRoutineRepeatType(updated.id, nextRepeatType)
+                    onRepeatTypeChange(updated, nextRepeatType)
                     notifyItemChanged(adapterPosition)
                 }
             }

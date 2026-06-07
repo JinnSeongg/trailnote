@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.trailnote.MainActivity
@@ -22,8 +23,11 @@ import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.setupTwoLineLimitedDescriptionEditText
 import com.example.trailnote.core.util.setHeader
-import com.example.trailnote.data.InMemoryDataStore
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentGrowthAreaDetailBinding
+import com.example.trailnote.domain.model.GrowthArea
+import com.example.trailnote.domain.model.GrowthTopic
+import kotlinx.coroutines.launch
 
 class GrowthAreaDetailFragment : Fragment() {
     private var binding: FragmentGrowthAreaDetailBinding? = null
@@ -32,6 +36,9 @@ class GrowthAreaDetailFragment : Fragment() {
     private var areaId: String = ""
     private var quickAddMode: QuickAddMode = QuickAddMode.GrowthTopic
     private var topicDragSelectionHelper: RecyclerDragSelectionHelper? = null
+    private var area: GrowthArea? = null
+    private var areas: List<GrowthArea> = emptyList()
+    private var topics: List<GrowthTopic> = emptyList()
     private val selectionStateListener: (SelectionState) -> Unit = {
         if (::growthTopicAdapter.isInitialized) growthTopicAdapter.notifyDataSetChanged()
     }
@@ -44,23 +51,15 @@ class GrowthAreaDetailFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         areaId = requireArguments().getString("growthAreaId").orEmpty()
-        val area = InMemoryDataStore.getGrowthArea(areaId) ?: return
-        val topics = InMemoryDataStore.getGrowthTopicsByArea(areaId)
         val current = binding ?: return
-        current.root.setHeader(
-            area.title,
-            action = "\u00B7\u00B7\u00B7",
-            showBack = true,
-            onBack = { findNavController().popBackStack() },
-            onAction = { showAreaMenu() }
-        )
-        current.descriptionText.setText(area.description)
         descriptionWatcher = current.descriptionText.setupTwoLineLimitedDescriptionEditText { text ->
-            InMemoryDataStore.updateGrowthAreaDescription(areaId, text)
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.updateGrowthAreaDescription(areaId, text)
+            }
         }
 
         growthTopicAdapter = GrowthTopicAdapter(
-            sourceItems = topics,
+            sourceItems = emptyList(),
             onClick = ::handleTopicClick,
             onLongClick = ::handleTopicLongClick,
             isSelected = ::isTopicSelected
@@ -69,23 +68,20 @@ class GrowthAreaDetailFragment : Fragment() {
         current.growthTopicList.layoutManager = LinearLayoutManager(requireContext())
         current.growthTopicList.adapter = growthTopicAdapter
         attachTopicDragHelper()
-        current.emptyText.visibility = if (topics.isEmpty()) View.VISIBLE else View.GONE
-        current.growthTopicList.visibility = if (topics.isEmpty()) View.GONE else View.VISIBLE
 
         InlineQuickAdd.bind(current.growthTopicQuickAdd.root, onDismiss = { showGrowthTopicFab() }) { title ->
-            when (quickAddMode) {
-                QuickAddMode.GrowthTopic -> {
-                    growthTopicAdapter.addItem(InMemoryDataStore.addGrowthTopic(areaId, title))
-                    current.emptyText.visibility = View.GONE
-                    current.growthTopicList.visibility = View.VISIBLE
-                }
-                QuickAddMode.AreaTitle -> {
-                    InMemoryDataStore.updateGrowthAreaTitle(areaId, title)?.let { updated ->
-                        current.root.findViewById<TextView>(R.id.headerTitle)?.text = updated.title
+            viewLifecycleOwner.lifecycleScope.launch {
+                when (quickAddMode) {
+                    QuickAddMode.GrowthTopic -> repository.addGrowthTopic(areaId, title)
+                    QuickAddMode.AreaTitle -> {
+                        repository.updateGrowthAreaTitle(areaId, title)?.let { updated ->
+                            current.root.findViewById<TextView>(R.id.headerTitle)?.text = updated.title
+                        }
                     }
                 }
+                quickAddMode = QuickAddMode.GrowthTopic
+                reloadArea()
             }
-            quickAddMode = QuickAddMode.GrowthTopic
         }
         current.growthTopicAddButton.setOnClickListener {
             quickAddMode = QuickAddMode.GrowthTopic
@@ -106,6 +102,14 @@ class GrowthAreaDetailFragment : Fragment() {
                 callback.isEnabled = InlineQuickAdd.isVisible(quickAdd)
             }
         })
+        reloadArea()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (binding != null && ::growthTopicAdapter.isInitialized) {
+            reloadArea()
+        }
     }
 
     private fun showGrowthTopicFab() {
@@ -143,9 +147,11 @@ class GrowthAreaDetailFragment : Fragment() {
         val ids = selectionController.selectedItemIds.toList()
         if (ids.isEmpty()) return
         DeleteConfirmDialogHelper.showMultiple(requireContext(), ids.size) {
-            ids.forEach { InMemoryDataStore.deleteGrowthTopic(it) }
-            selectionController.exit()
-            renderTopics()
+            viewLifecycleOwner.lifecycleScope.launch {
+                ids.forEach { repository.deleteGrowthTopic(it) }
+                selectionController.exit()
+                reloadArea()
+            }
         }
     }
 
@@ -153,18 +159,24 @@ class GrowthAreaDetailFragment : Fragment() {
         MoveTargetDialogFragment(
             title = "\uC774\uB3D9\uD560 \uC131\uC7A5 \uBD84\uC57C",
             addHint = "\uC0C8 \uC131\uC7A5 \uBD84\uC57C \uC785\uB825",
-            loadTargets = { InMemoryDataStore.getGrowthAreas().map { MoveTarget(it.id, it.title) } },
-            onAddTarget = { title -> InMemoryDataStore.addGrowthArea(title) },
+            loadTargets = { areas.map { MoveTarget(it.id, it.title) } },
+            onAddTarget = { title ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.addGrowthArea(title)
+                    reloadArea()
+                }
+            },
             onTargetSelected = { target ->
-                InMemoryDataStore.moveGrowthTopicsToArea(selectionController.selectedItemIds, target.id)
-                selectionController.exit()
-                renderTopics()
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.moveGrowthTopicsToArea(selectionController.selectedItemIds, target.id)
+                    selectionController.exit()
+                    reloadArea()
+                }
             }
         ).show(childFragmentManager, "move_growth_topics")
     }
 
     private fun renderTopics() {
-        val topics = InMemoryDataStore.getGrowthTopicsByArea(areaId)
         growthTopicAdapter.submitList(topics)
         binding?.emptyText?.visibility = if (topics.isEmpty()) View.VISIBLE else View.GONE
         binding?.growthTopicList?.visibility = if (topics.isEmpty()) View.GONE else View.VISIBLE
@@ -204,17 +216,48 @@ class GrowthAreaDetailFragment : Fragment() {
 
     private fun openTitleEdit() {
         val current = binding ?: return
-        val area = InMemoryDataStore.getGrowthArea(areaId) ?: return
+        val area = area ?: return
         quickAddMode = QuickAddMode.AreaTitle
         current.growthTopicFabButton.visibility = View.GONE
         InlineQuickAdd.show(current.growthTopicQuickAdd.root, "\uC81C\uBAA9 \uC785\uB825", area.title)
     }
 
     private fun confirmDeleteArea() {
-        val areaTitle = InMemoryDataStore.getGrowthArea(areaId)?.title
+        val areaTitle = area?.title
         DeleteConfirmDialogHelper.showSingle(requireContext(), areaTitle) {
-            InMemoryDataStore.deleteGrowthArea(areaId)
-            findNavController().navigateUp()
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.deleteGrowthArea(areaId)
+                findNavController().navigateUp()
+            }
+        }
+    }
+
+    private fun reloadArea() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            area = repository.getGrowthAreaById(areaId)
+            if (area == null) {
+                findNavController().navigateUp()
+                return@launch
+            }
+            areas = repository.getGrowthAreas()
+            topics = repository.getGrowthTopicsByAreaId(areaId)
+            renderArea()
+            renderTopics()
+        }
+    }
+
+    private fun renderArea() {
+        val current = binding ?: return
+        val currentArea = area ?: return
+        current.root.setHeader(
+            currentArea.title,
+            action = "\u00B7\u00B7\u00B7",
+            showBack = true,
+            onBack = { findNavController().popBackStack() },
+            onAction = { showAreaMenu() }
+        )
+        if (current.descriptionText.text.toString() != currentArea.description) {
+            current.descriptionText.setText(currentArea.description)
         }
     }
 
@@ -236,6 +279,9 @@ class GrowthAreaDetailFragment : Fragment() {
 
     private val selectionController
         get() = (requireActivity() as MainActivity).selectionController
+
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
 
     private fun topicSelectionScope(): String = "growth-topics:$areaId"
 

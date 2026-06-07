@@ -2,12 +2,14 @@ package com.example.trailnote.feature.log
 
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.trailnote.MainActivity
@@ -17,19 +19,28 @@ import com.example.trailnote.core.selection.MoveTargetDialogFragment
 import com.example.trailnote.core.selection.SelectionState
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
+import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.setHeader
-import com.example.trailnote.data.InMemoryDataStore
+import com.example.trailnote.data.local.db.DatabaseSeeder
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentLogBinding
+import com.example.trailnote.domain.model.LogCategory
 import com.example.trailnote.domain.model.LogEntry
 import com.example.trailnote.domain.model.LogTopic
+import kotlinx.coroutines.launch
 
 class LogFragment : Fragment() {
     private var binding: FragmentLogBinding? = null
     private var selectedCategoryId: String? = null
-    private var quickAddTargetTopic: LogTopic? = null
+    private var quickAddMode: QuickAddMode? = null
     private var topicSectionAdapter: LogTopicSectionAdapter? = null
+    private var categories: List<LogCategory> = emptyList()
+    private var topics: List<LogTopic> = emptyList()
+    private var entries: List<LogEntry> = emptyList()
     private val selectionStateListener: (SelectionState) -> Unit = {
         topicSectionAdapter?.notifyDataSetChanged()
+        renderHeader()
+        updateTopicFabVisibility()
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -40,30 +51,48 @@ class LogFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val current = binding ?: return
-        current.root.setHeader("\uAE30\uB85D", action = "\u2315")
+        renderHeader()
         selectionController.addStateListener(selectionStateListener)
-        InlineQuickAdd.bind(current.categoryQuickAdd.root) { text ->
-            val targetTopic = quickAddTargetTopic
-            if (targetTopic == null) {
-                val category = InMemoryDataStore.addLogCategory(text)
-                selectedCategoryId = category.id
-                renderChips()
-            } else {
-                InMemoryDataStore.addLogEntry(targetTopic.id, text)
+        InlineQuickAdd.bind(current.categoryQuickAdd.root, onDismiss = {
+            quickAddMode = null
+            updateTopicFabVisibility()
+        }) { text ->
+            val modeAtSubmit = quickAddMode
+            viewLifecycleOwner.lifecycleScope.launch {
+                when (val mode = modeAtSubmit) {
+                    QuickAddMode.Category -> {
+                        val category = repository.addLogCategory(text)
+                        selectedCategoryId = category.id
+                    }
+                    is QuickAddMode.Topic -> repository.addLogTopic(mode.categoryId, text)
+                    is QuickAddMode.Entry -> repository.addLogEntry(mode.topicId, text)
+                    is QuickAddMode.EditCategory -> repository.updateLogCategoryName(mode.categoryId, text)
+                    null -> return@launch
+                }
+                quickAddMode = null
+                reloadLogs()
             }
-            quickAddTargetTopic = null
-            renderList()
         }
         current.categoryAddButton.setOnClickListener {
             if (!selectionController.isInSelectionMode) {
-                quickAddTargetTopic = null
-                InlineQuickAdd.show(current.categoryQuickAdd.root, "\uC0C8 \uCE74\uD14C\uACE0\uB9AC \uC785\uB825")
+                openQuickAdd(QuickAddMode.Category, "\uC0C8 \uCE74\uD14C\uACE0\uB9AC \uC785\uB825")
             }
+        }
+        current.logTopicAddButton.setOnClickListener {
+            val categoryId = selectedCategoryId ?: return@setOnClickListener
+            if (!selectionController.isInSelectionMode) {
+                openQuickAdd(QuickAddMode.Topic(categoryId), "\uC0C8 \uC8FC\uC81C \uC785\uB825")
+            }
+        }
+        current.topicSectionList.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN && quickAddMode is QuickAddMode.Topic) {
+                closeQuickAdd()
+            }
+            false
         }
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
-                quickAddTargetTopic = null
-                InlineQuickAdd.hide(current.categoryQuickAdd.root)
+                closeQuickAdd()
                 isEnabled = false
             }
         }.also { callback ->
@@ -71,14 +100,20 @@ class LogFragment : Fragment() {
                 callback.isEnabled = InlineQuickAdd.isVisible(quickAdd)
             }
         })
-        renderChips()
-        renderList()
+        reloadLogs()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (binding != null) {
+            reloadLogs()
+        }
     }
 
     private fun renderChips() {
         val current = binding ?: return
         current.categoryChipContainer.removeAllViews()
-        val chipEntries = listOf(null to "\uC804\uCCB4") + InMemoryDataStore.getLogCategories().map { it.id to it.name }
+        val chipEntries = listOf(null to "\uC804\uCCB4") + categories.map { it.id to it.name }
         chipEntries.forEach { (id, label) ->
             val chip = TextView(requireContext()).apply {
                 text = label
@@ -88,9 +123,9 @@ class LogFragment : Fragment() {
                 setOnClickListener {
                     if (!selectionController.isInSelectionMode) {
                         selectedCategoryId = id
-                        quickAddTargetTopic = null
-                        InlineQuickAdd.hide(current.categoryQuickAdd.root)
+                        closeQuickAdd()
                         topicSectionAdapter?.closeOpen()
+                        renderHeader()
                         renderChips()
                         renderList()
                     }
@@ -100,12 +135,28 @@ class LogFragment : Fragment() {
         }
     }
 
+    private fun renderHeader() {
+        val current = binding ?: return
+        current.root.setHeader(
+            "\uAE30\uB85D",
+            action = "\u2315",
+            showMore = selectedCategoryId != null && !selectionController.isInSelectionMode,
+            onMore = {
+                current.root.findViewById<TextView>(R.id.headerMore)?.let(::showSelectedCategoryMenu)
+            }
+        )
+    }
+
     private fun renderList() {
         val current = binding ?: return
-        val visibleTopics = InMemoryDataStore.getLogTopicsByCategory(selectedCategoryId)
+        val visibleTopics = if (selectedCategoryId == null) {
+            topics
+        } else {
+            topics.filter { it.categoryId == selectedCategoryId }
+        }
         topicSectionAdapter = LogTopicSectionAdapter(
             topics = visibleTopics,
-            entriesForTopic = { topicId -> InMemoryDataStore.getLogEntriesByTopic(topicId) },
+            entriesForTopic = { topicId -> entries.filter { it.topicId == topicId } },
             onTopicClick = ::handleTopicClick,
             onEntryClick = ::handleEntryClick,
             onEntryLongClick = ::handleEntryLongClick,
@@ -114,13 +165,75 @@ class LogFragment : Fragment() {
             onEntryDragStarted = ::prepareEntrySelectionHandlers,
             onAddClick = { topic ->
                 if (!selectionController.isInSelectionMode) {
-                    quickAddTargetTopic = topic
-                    InlineQuickAdd.show(current.categoryQuickAdd.root, "\uC0C8 \uAE30\uB85D \uC81C\uBAA9 \uC785\uB825")
+                    openQuickAdd(QuickAddMode.Entry(topic.id), "\uC0C8 \uAE30\uB85D \uC81C\uBAA9 \uC785\uB825")
                 }
             }
         )
         current.topicSectionList.layoutManager = LinearLayoutManager(requireContext())
         current.topicSectionList.adapter = topicSectionAdapter
+        updateTopicFabVisibility()
+    }
+
+    private fun updateTopicFabVisibility() {
+        val current = binding ?: return
+        current.logTopicAddButton.visibility =
+            if (
+                selectedCategoryId != null &&
+                !selectionController.isInSelectionMode &&
+                !isAddTopicInputVisible()
+            ) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+    }
+
+    private fun isAddTopicInputVisible(): Boolean {
+        val current = binding ?: return false
+        return quickAddMode is QuickAddMode.Topic && InlineQuickAdd.isVisible(current.categoryQuickAdd.root)
+    }
+
+    private fun openQuickAdd(mode: QuickAddMode, hint: String, initialText: String = "") {
+        val current = binding ?: return
+        quickAddMode = mode
+        InlineQuickAdd.show(current.categoryQuickAdd.root, hint, initialText)
+        updateTopicFabVisibility()
+    }
+
+    private fun closeQuickAdd() {
+        val current = binding ?: return
+        quickAddMode = null
+        InlineQuickAdd.hide(current.categoryQuickAdd.root)
+        updateTopicFabVisibility()
+    }
+
+    private fun showSelectedCategoryMenu(anchor: View) {
+        val category = categories.firstOrNull { it.id == selectedCategoryId } ?: return
+        PopupMenuHelper.show(requireContext(), anchor, listOf("\uC218\uC815", "\uC0AD\uC81C")) { title ->
+            when (title) {
+                "\uC218\uC815" -> {
+                    openQuickAdd(QuickAddMode.EditCategory(category.id), "\uCE74\uD14C\uACE0\uB9AC \uC785\uB825", category.name)
+                    true
+                }
+                "\uC0AD\uC81C" -> {
+                    DeleteConfirmDialogHelper.showCustom(
+                        context = requireContext(),
+                        title = "\uC0AD\uC81C\uD560\uAE4C\uC694?",
+                        message = "${category.name}\uC744(\uB97C) \uC0AD\uC81C\uD569\uB2C8\uB2E4. \uC774 \uCE74\uD14C\uACE0\uB9AC\uC758 \uC8FC\uC81C\uC640 \uAE30\uB85D\uB3C4 \uD568\uAED8 \uC0AD\uC81C\uB429\uB2C8\uB2E4. \uC774 \uC791\uC5C5\uC740 \uB418\uB3CC\uB9B4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+                        onDelete = {
+                            viewLifecycleOwner.lifecycleScope.launch {
+                                repository.deleteLogCategory(category.id)
+                                selectedCategoryId = null
+                                quickAddMode = null
+                                reloadLogs()
+                            }
+                        }
+                    )
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     private fun handleTopicClick(topic: LogTopic) {
@@ -157,9 +270,11 @@ class LogFragment : Fragment() {
         val ids = selectionController.selectedItemIds.toList()
         if (ids.isEmpty()) return
         DeleteConfirmDialogHelper.showMultiple(requireContext(), ids.size) {
-            ids.forEach { InMemoryDataStore.deleteLogEntry(it) }
-            selectionController.exit()
-            renderList()
+            viewLifecycleOwner.lifecycleScope.launch {
+                ids.forEach { repository.deleteLogEntry(it) }
+                selectionController.exit()
+                reloadLogs()
+            }
         }
     }
 
@@ -167,23 +282,45 @@ class LogFragment : Fragment() {
         MoveTargetDialogFragment(
             title = "\uC774\uB3D9\uD560 \uC8FC\uC81C",
             addHint = "\uC0C8 \uC8FC\uC81C \uC785\uB825",
-            loadTargets = { InMemoryDataStore.getLogTopics().map { MoveTarget(it.id, it.title) } },
+            loadTargets = { topics.map { MoveTarget(it.id, it.title) } },
             onAddTarget = { title ->
-                val categoryId = currentEntryCategoryId() ?: InMemoryDataStore.getLogCategories().firstOrNull()?.id
-                if (categoryId != null) InMemoryDataStore.addLogTopic(categoryId, title)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val categoryId = currentEntryCategoryId() ?: categories.firstOrNull()?.id
+                    if (categoryId != null) {
+                        repository.addLogTopic(categoryId, title)
+                        reloadLogs()
+                    }
+                }
             },
             onTargetSelected = { target ->
-                InMemoryDataStore.moveLogEntriesToTopic(selectionController.selectedItemIds, target.id)
-                selectionController.exit()
-                renderList()
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.moveLogEntriesToTopic(selectionController.selectedItemIds, target.id)
+                    selectionController.exit()
+                    reloadLogs()
+                }
             }
         ).show(childFragmentManager, "move_log_entries")
     }
 
     private fun currentEntryCategoryId(): String? {
         val firstEntryId = selectionController.selectedItemIds.firstOrNull() ?: return selectedCategoryId
-        val topicId = InMemoryDataStore.getLogEntry(firstEntryId)?.topicId ?: return selectedCategoryId
-        return InMemoryDataStore.getLogTopic(topicId)?.categoryId ?: selectedCategoryId
+        val topicId = entries.firstOrNull { it.id == firstEntryId }?.topicId ?: return selectedCategoryId
+        return topics.firstOrNull { it.id == topicId }?.categoryId ?: selectedCategoryId
+    }
+
+    private fun reloadLogs() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            DatabaseSeeder.seedIfNeeded(requireContext().applicationContext)
+            categories = repository.getLogCategories()
+            topics = repository.getLogTopics()
+            entries = repository.getLogEntries()
+            if (selectedCategoryId != null && categories.none { it.id == selectedCategoryId }) {
+                selectedCategoryId = null
+            }
+            renderHeader()
+            renderChips()
+            renderList()
+        }
     }
 
     override fun onDestroyView() {
@@ -199,5 +336,15 @@ class LogFragment : Fragment() {
     private val selectionController
         get() = (requireActivity() as MainActivity).selectionController
 
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
+
     private fun LogEntry.selectionScope(): String = "log-entries:$topicId"
+
+    private sealed class QuickAddMode {
+        object Category : QuickAddMode()
+        data class Topic(val categoryId: String) : QuickAddMode()
+        data class Entry(val topicId: String) : QuickAddMode()
+        data class EditCategory(val categoryId: String) : QuickAddMode()
+    }
 }

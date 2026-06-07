@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 import com.example.trailnote.R
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.trailnote.MainActivity
@@ -21,8 +22,11 @@ import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.setupTwoLineLimitedDescriptionEditText
 import com.example.trailnote.core.util.setHeader
-import com.example.trailnote.data.InMemoryDataStore
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentMilestoneDetailBinding
+import com.example.trailnote.domain.model.Milestone
+import com.example.trailnote.domain.model.ShortTask
+import kotlinx.coroutines.launch
 
 class MilestoneDetailFragment : Fragment() {
     private var binding: FragmentMilestoneDetailBinding? = null
@@ -32,6 +36,9 @@ class MilestoneDetailFragment : Fragment() {
     private var descriptionWatcher: TextWatcher? = null
     private var quickAddMode: QuickAddMode = QuickAddMode.ShortTask
     private var shortTaskDragSelectionHelper: RecyclerDragSelectionHelper? = null
+    private var milestone: Milestone? = null
+    private var milestones: List<Milestone> = emptyList()
+    private var shortTasks: List<ShortTask> = emptyList()
     private val selectionStateListener: (SelectionState) -> Unit = {
         if (::shortTaskAdapter.isInitialized) shortTaskAdapter.notifyDataSetChanged()
     }
@@ -45,25 +52,23 @@ class MilestoneDetailFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         projectId = requireArguments().getString("projectId").orEmpty()
         milestoneId = requireArguments().getString("milestoneId").orEmpty()
-        val milestone = InMemoryDataStore.getMilestone(milestoneId) ?: return
-        val tasks = InMemoryDataStore.getShortTasksByMilestone(milestoneId)
         val current = binding ?: return
-        current.root.setHeader(
-            milestone.title,
-            action = "\u00B7\u00B7\u00B7",
-            showBack = true,
-            onBack = { findNavController().popBackStack() },
-            onAction = { showMilestoneMenu() }
-        )
-        current.descriptionText.setText(milestone.description)
         descriptionWatcher = current.descriptionText.setupTwoLineLimitedDescriptionEditText { text ->
-            InMemoryDataStore.updateMilestoneDescription(milestoneId, text)
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.updateMilestoneDescription(milestoneId, text)
+            }
         }
 
         shortTaskAdapter = ShortTaskAdapter(
-            tasks = tasks,
+            tasks = emptyList(),
             onClick = ::handleShortTaskClick,
             onLongClick = ::handleShortTaskLongClick,
+            onDoneChange = { task, checked ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.updateShortTaskDone(task.id, checked)
+                    reloadMilestone()
+                }
+            },
             isSelectionMode = { selectionController.isInSelectionMode },
             isSelected = ::isShortTaskSelected
         )
@@ -71,23 +76,20 @@ class MilestoneDetailFragment : Fragment() {
         current.shortTaskList.layoutManager = LinearLayoutManager(requireContext())
         current.shortTaskList.adapter = shortTaskAdapter
         attachShortTaskDragHelper()
-        current.emptyText.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
-        current.shortTaskList.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
 
         InlineQuickAdd.bind(current.shortTaskQuickAdd.root, onDismiss = { showShortTaskFab() }) { title ->
-            when (quickAddMode) {
-                QuickAddMode.ShortTask -> {
-                    shortTaskAdapter.addItem(InMemoryDataStore.addShortTask(milestoneId, title))
-                    current.emptyText.visibility = View.GONE
-                    current.shortTaskList.visibility = View.VISIBLE
-                }
-                QuickAddMode.MilestoneTitle -> {
-                    InMemoryDataStore.updateMilestoneTitle(milestoneId, title)?.let { updated ->
-                        current.root.findViewById<TextView>(R.id.headerTitle)?.text = updated.title
+            viewLifecycleOwner.lifecycleScope.launch {
+                when (quickAddMode) {
+                    QuickAddMode.ShortTask -> repository.addShortTask(milestoneId, title)
+                    QuickAddMode.MilestoneTitle -> {
+                        repository.updateMilestoneTitle(milestoneId, title)?.let { updated ->
+                            current.root.findViewById<TextView>(R.id.headerTitle)?.text = updated.title
+                        }
                     }
                 }
+                quickAddMode = QuickAddMode.ShortTask
+                reloadMilestone()
             }
-            quickAddMode = QuickAddMode.ShortTask
         }
         current.shortTaskAddButton.setOnClickListener {
             quickAddMode = QuickAddMode.ShortTask
@@ -108,6 +110,14 @@ class MilestoneDetailFragment : Fragment() {
                 callback.isEnabled = InlineQuickAdd.isVisible(quickAdd)
             }
         })
+        reloadMilestone()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (binding != null && ::shortTaskAdapter.isInitialized) {
+            reloadMilestone()
+        }
     }
 
     private fun showShortTaskFab() {
@@ -139,12 +149,11 @@ class MilestoneDetailFragment : Fragment() {
         val ids = selectionController.selectedItemIds.toList()
         if (ids.isEmpty()) return
         DeleteConfirmDialogHelper.showMultiple(requireContext(), ids.size) {
-            ids.forEach { InMemoryDataStore.deleteShortTask(it) }
-            selectionController.exit()
-            val tasks = InMemoryDataStore.getShortTasksByMilestone(milestoneId)
-            shortTaskAdapter.submitList(tasks)
-            binding?.emptyText?.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
-            binding?.shortTaskList?.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
+            viewLifecycleOwner.lifecycleScope.launch {
+                ids.forEach { repository.deleteShortTask(it) }
+                selectionController.exit()
+                reloadMilestone()
+            }
         }
     }
 
@@ -167,19 +176,23 @@ class MilestoneDetailFragment : Fragment() {
             title = "\uC774\uB3D9\uD560 \uC911\uAE30\uBAA9\uD45C",
             addHint = "\uC0C8 \uC911\uAE30\uBAA9\uD45C \uC785\uB825",
             loadTargets = {
-                InMemoryDataStore.getMilestonesByProject(projectId).map { milestone ->
+                milestones.map { milestone ->
                     MoveTarget(milestone.id, milestone.title)
                 }
             },
-            onAddTarget = { title -> InMemoryDataStore.addMilestone(projectId, title) },
+            onAddTarget = { title ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.addMilestone(projectId, title)
+                    reloadMilestone()
+                }
+            },
             onTargetSelected = { target ->
                 val ids = selectionController.selectedItemIds.toList()
-                InMemoryDataStore.moveShortTasksToMilestone(ids, target.id)
-                selectionController.exit()
-                val tasks = InMemoryDataStore.getShortTasksByMilestone(milestoneId)
-                shortTaskAdapter.submitList(tasks)
-                binding?.emptyText?.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
-                binding?.shortTaskList?.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.moveShortTasksToMilestone(ids, target.id)
+                    selectionController.exit()
+                    reloadMilestone()
+                }
             }
         ).show(childFragmentManager, "move_short_tasks")
     }
@@ -204,18 +217,51 @@ class MilestoneDetailFragment : Fragment() {
 
     private fun openTitleEdit() {
         val current = binding ?: return
-        val milestone = InMemoryDataStore.getMilestone(milestoneId) ?: return
+        val milestone = milestone ?: return
         quickAddMode = QuickAddMode.MilestoneTitle
         current.shortTaskFabButton.visibility = View.GONE
         InlineQuickAdd.show(current.shortTaskQuickAdd.root, "\uC81C\uBAA9 \uC785\uB825", milestone.title)
     }
 
     private fun confirmDeleteMilestone() {
-        val milestoneTitle = InMemoryDataStore.getMilestone(milestoneId)?.title
+        val milestoneTitle = milestone?.title
         DeleteConfirmDialogHelper.showSingle(requireContext(), milestoneTitle) {
-            InMemoryDataStore.deleteMilestone(milestoneId)
-            findNavController().navigateUp()
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.deleteMilestone(milestoneId)
+                findNavController().navigateUp()
+            }
         }
+    }
+
+    private fun reloadMilestone() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            milestone = repository.getMilestoneById(milestoneId)
+            if (milestone == null) {
+                findNavController().navigateUp()
+                return@launch
+            }
+            milestones = repository.getMilestonesByProjectId(projectId)
+            shortTasks = repository.getShortTasksByMilestoneId(milestoneId)
+            renderMilestone()
+        }
+    }
+
+    private fun renderMilestone() {
+        val current = binding ?: return
+        val currentMilestone = milestone ?: return
+        current.root.setHeader(
+            currentMilestone.title,
+            action = "\u00B7\u00B7\u00B7",
+            showBack = true,
+            onBack = { findNavController().popBackStack() },
+            onAction = { showMilestoneMenu() }
+        )
+        if (current.descriptionText.text.toString() != currentMilestone.description) {
+            current.descriptionText.setText(currentMilestone.description)
+        }
+        shortTaskAdapter.submitList(shortTasks)
+        current.emptyText.visibility = if (shortTasks.isEmpty()) View.VISIBLE else View.GONE
+        current.shortTaskList.visibility = if (shortTasks.isEmpty()) View.GONE else View.VISIBLE
     }
 
     override fun onDestroyView() {
@@ -236,6 +282,9 @@ class MilestoneDetailFragment : Fragment() {
 
     private val selectionController
         get() = (requireActivity() as MainActivity).selectionController
+
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
 
     private fun shortTaskSelectionScope(): String = "milestone-short-tasks:$milestoneId"
 

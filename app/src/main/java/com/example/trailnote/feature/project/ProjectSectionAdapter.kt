@@ -1,6 +1,7 @@
 package com.example.trailnote.feature.project
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -15,8 +16,10 @@ class ProjectSectionAdapter(
     private val isProjectSelected: (Project) -> Boolean,
     private val selectionController: SelectionController,
     private val onProjectDragStarted: (Project) -> Unit,
-    private val onCategoryClick: (String) -> Unit,
-    private val onCategoryAddClick: (String) -> Unit
+    private val onCategoryClick: (ProjectSection) -> Unit,
+    private val onCategoryAddClick: (ProjectSection) -> Unit,
+    private val onCategoryLongClick: (ProjectSection, View) -> Unit,
+    private val projectProgressProvider: (Project) -> Int = { 0 }
 ) : RecyclerView.Adapter<ProjectSectionAdapter.ViewHolder>() {
     private val items = mutableListOf<ProjectSection>()
 
@@ -33,7 +36,9 @@ class ProjectSectionAdapter(
             selectionController,
             onProjectDragStarted,
             onCategoryClick,
-            onCategoryAddClick
+            onCategoryAddClick,
+            onCategoryLongClick,
+            projectProgressProvider
         )
     }
 
@@ -55,21 +60,33 @@ class ProjectSectionAdapter(
             isProjectSelected: (Project) -> Boolean,
             selectionController: SelectionController,
             onProjectDragStarted: (Project) -> Unit,
-            onCategoryClick: (String) -> Unit,
-            onCategoryAddClick: (String) -> Unit
+            onCategoryClick: (ProjectSection) -> Unit,
+            onCategoryAddClick: (ProjectSection) -> Unit,
+            onCategoryLongClick: (ProjectSection, View) -> Unit,
+            projectProgressProvider: (Project) -> Int
         ) {
             binding.categoryText.text = section.category
-            binding.categoryText.setOnClickListener { onCategoryClick(section.category) }
-            binding.categoryAddButton.setOnClickListener { onCategoryAddClick(section.category) }
+            binding.categoryText.setOnClickListener { onCategoryClick(section) }
+            binding.categoryText.setOnLongClickListener {
+                onCategoryLongClick(section, it)
+                true
+            }
+            binding.categoryAddButton.setOnClickListener { onCategoryAddClick(section) }
             binding.projectCardList.layoutManager = LinearLayoutManager(binding.root.context)
-            val adapter = ProjectAdapter(section.projects, onProjectClick, onProjectLongClick, isProjectSelected)
+            val adapter = ProjectAdapter(
+                section.projects,
+                onProjectClick,
+                onProjectLongClick,
+                isProjectSelected,
+                projectProgressProvider
+            )
             binding.projectCardList.adapter = adapter
             dragSelectionHelper?.let { binding.projectCardList.removeOnItemTouchListener(it) }
             dragSelectionHelper = RecyclerDragSelectionHelper(
                 recyclerView = binding.projectCardList,
                 selectionController = selectionController,
                 getItemId = { position -> adapter.getItem(position)?.id },
-                getItemScope = { position -> adapter.getItem(position)?.let { "project-category:${it.category}" } },
+                getItemScope = { position -> adapter.getItem(position)?.let { "project-category:${it.categoryId ?: "none"}" } },
                 isItemSelected = { position -> adapter.getItem(position)?.let(isProjectSelected) == true },
                 onDragStarted = { position ->
                     adapter.getItem(position)?.let(onProjectDragStarted)
@@ -81,6 +98,7 @@ class ProjectSectionAdapter(
 }
 
 data class ProjectSection(
+    val categoryId: Long?,
     val category: String,
     val projects: List<Project>
 )

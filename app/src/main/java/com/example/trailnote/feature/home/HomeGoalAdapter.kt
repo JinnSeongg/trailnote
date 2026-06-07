@@ -9,7 +9,8 @@ import com.example.trailnote.databinding.ItemHomeGoalBinding
 import com.example.trailnote.domain.model.Task
 
 class HomeGoalAdapter(
-    goals: List<Task>
+    goals: List<Task>,
+    private val onDoneChange: (Task, Boolean) -> Unit = { _, _ -> }
 ) : RecyclerView.Adapter<HomeGoalAdapter.ViewHolder>() {
     private val items = goals.toMutableList()
 
@@ -22,11 +23,18 @@ class HomeGoalAdapter(
             val adapterPosition = holder.bindingAdapterPosition
             if (adapterPosition != RecyclerView.NO_POSITION) {
                 items[adapterPosition] = items[adapterPosition].copy(isDone = checked)
+                onDoneChange(items[adapterPosition], checked)
             }
         }
     }
 
     override fun getItemCount(): Int = items.size
+
+    fun submitList(newItems: List<Task>) {
+        items.clear()
+        items.addAll(newItems)
+        notifyDataSetChanged()
+    }
 
     class ViewHolder(private val binding: ItemHomeGoalBinding) : RecyclerView.ViewHolder(binding.root) {
         private val defaultTextColors: ColorStateList = binding.checkBox.textColors

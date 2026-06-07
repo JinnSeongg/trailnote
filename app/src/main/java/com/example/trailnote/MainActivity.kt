@@ -3,12 +3,15 @@ package com.example.trailnote
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.NavHostFragment
 import com.example.trailnote.core.selection.SelectionController
 import com.example.trailnote.core.selection.SelectionState
+import com.example.trailnote.data.local.db.DatabaseSeeder
 import com.example.trailnote.databinding.ActivityMainBinding
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -24,6 +27,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         selectionController = SelectionController().also {
             it.addStateListener(::renderSelectionState)
+        }
+        lifecycleScope.launch {
+            DatabaseSeeder.seedIfNeeded(applicationContext)
         }
 
         val navHostFragment = supportFragmentManager

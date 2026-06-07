@@ -13,6 +13,7 @@ class ShortTaskAdapter(
     tasks: List<ShortTask>,
     private val onClick: (ShortTask) -> Unit = {},
     private val onLongClick: (ShortTask) -> Unit = {},
+    private val onDoneChange: (ShortTask, Boolean) -> Unit = { _, _ -> },
     private val isSelectionMode: () -> Boolean = { false },
     private val isSelected: (ShortTask) -> Boolean = { false }
 ) : RecyclerView.Adapter<ShortTaskAdapter.ViewHolder>() {
@@ -33,6 +34,7 @@ class ShortTaskAdapter(
             val adapterPosition = holder.bindingAdapterPosition
             if (adapterPosition != RecyclerView.NO_POSITION) {
                 items[adapterPosition] = items[adapterPosition].copy(isDone = checked)
+                onDoneChange(items[adapterPosition], checked)
             }
         }
     }

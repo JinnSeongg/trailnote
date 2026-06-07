@@ -6,5 +6,7 @@ data class Project(
     val description: String,
     val category: String,
     val status: String,
-    val targetDate: String
+    val targetDate: String,
+    val categoryId: Long? = null,
+    val updatedAt: String = ""
 )

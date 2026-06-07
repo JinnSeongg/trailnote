@@ -8,6 +8,7 @@ import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.trailnote.MainActivity
@@ -20,8 +21,12 @@ import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.setHeader
-import com.example.trailnote.data.InMemoryDataStore
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentLogTopicDetailBinding
+import com.example.trailnote.domain.model.LogCategory
+import com.example.trailnote.domain.model.LogEntry
+import com.example.trailnote.domain.model.LogTopic
+import kotlinx.coroutines.launch
 
 class LogTopicDetailFragment : Fragment() {
     private var binding: FragmentLogTopicDetailBinding? = null
@@ -29,6 +34,10 @@ class LogTopicDetailFragment : Fragment() {
     private var topicId: String = ""
     private var quickAddMode: QuickAddMode = QuickAddMode.Entry
     private var entryDragSelectionHelper: RecyclerDragSelectionHelper? = null
+    private var topic: LogTopic? = null
+    private var category: LogCategory? = null
+    private var topics: List<LogTopic> = emptyList()
+    private var entries: List<LogEntry> = emptyList()
     private val selectionStateListener: (SelectionState) -> Unit = {
         if (::entryAdapter.isInitialized) entryAdapter.notifyDataSetChanged()
     }
@@ -41,28 +50,10 @@ class LogTopicDetailFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         topicId = requireArguments().getString("topicId").orEmpty()
-        val topic = InMemoryDataStore.getLogTopic(topicId) ?: return
-        val category = InMemoryDataStore.getLogCategories().firstOrNull { it.id == topic.categoryId }
-        val entries = InMemoryDataStore.getLogEntriesByTopic(topicId)
         val current = binding ?: return
-
-        current.root.setHeader(
-            title = topic.title,
-            action = "\u2315",
-            showBack = true,
-            onBack = { findNavController().popBackStack() },
-            onAction = {
-                // TODO: Connect log entry search.
-            }
-        )
-        current.root.findViewById<TextView>(R.id.headerMore)?.apply {
-            visibility = View.VISIBLE
-            setOnClickListener { showTopicMenu(this) }
-        }
-        current.categoryText.text = category?.name.orEmpty()
         current.entryList.layoutManager = LinearLayoutManager(requireContext())
         entryAdapter = LogEntryAdapter(
-            items = entries,
+            items = emptyList(),
             onClick = ::handleEntryClick,
             onLongClick = ::handleEntryLongClick,
             isSelected = ::isEntrySelected
@@ -70,23 +61,20 @@ class LogTopicDetailFragment : Fragment() {
         selectionController.addStateListener(selectionStateListener)
         current.entryList.adapter = entryAdapter
         attachEntryDragHelper()
-        current.emptyText.visibility = if (entries.isEmpty()) View.VISIBLE else View.GONE
-        current.entryList.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
 
         InlineQuickAdd.bind(current.entryQuickAdd.root, onDismiss = { showFab() }) { title ->
-            when (quickAddMode) {
-                QuickAddMode.Entry -> {
-                    entryAdapter.addItem(InMemoryDataStore.addLogEntry(topicId, title))
-                    current.emptyText.visibility = View.GONE
-                    current.entryList.visibility = View.VISIBLE
-                }
-                QuickAddMode.TopicTitle -> {
-                    InMemoryDataStore.updateLogTopicTitle(topicId, title)?.let { updated ->
-                        current.root.findViewById<TextView>(R.id.headerTitle)?.text = updated.title
+            viewLifecycleOwner.lifecycleScope.launch {
+                when (quickAddMode) {
+                    QuickAddMode.Entry -> repository.addLogEntry(topicId, title)
+                    QuickAddMode.TopicTitle -> {
+                        repository.updateLogTopicTitle(topicId, title)?.let { updated ->
+                            current.root.findViewById<TextView>(R.id.headerTitle)?.text = updated.title
+                        }
                     }
                 }
+                quickAddMode = QuickAddMode.Entry
+                reloadTopic()
             }
-            quickAddMode = QuickAddMode.Entry
         }
         current.entryAddButton.setOnClickListener {
             quickAddMode = QuickAddMode.Entry
@@ -102,6 +90,14 @@ class LogTopicDetailFragment : Fragment() {
                 callback.isEnabled = InlineQuickAdd.isVisible(quickAdd)
             }
         })
+        reloadTopic()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (binding != null && ::entryAdapter.isInitialized) {
+            reloadTopic()
+        }
     }
 
     private fun openQuickInput(hint: String) {
@@ -112,7 +108,7 @@ class LogTopicDetailFragment : Fragment() {
 
     private fun openTitleEdit() {
         val current = binding ?: return
-        val topic = InMemoryDataStore.getLogTopic(topicId) ?: return
+        val topic = topic ?: return
         quickAddMode = QuickAddMode.TopicTitle
         current.entryAddButton.visibility = View.GONE
         InlineQuickAdd.show(current.entryQuickAdd.root, "\uC81C\uBAA9 \uC785\uB825", topic.title)
@@ -156,29 +152,37 @@ class LogTopicDetailFragment : Fragment() {
         val ids = selectionController.selectedItemIds.toList()
         if (ids.isEmpty()) return
         DeleteConfirmDialogHelper.showMultiple(requireContext(), ids.size) {
-            ids.forEach { InMemoryDataStore.deleteLogEntry(it) }
-            selectionController.exit()
-            renderEntries()
+            viewLifecycleOwner.lifecycleScope.launch {
+                ids.forEach { repository.deleteLogEntry(it) }
+                selectionController.exit()
+                reloadTopic()
+            }
         }
     }
 
     private fun showMoveEntryDialog() {
-        val categoryId = InMemoryDataStore.getLogTopic(topicId)?.categoryId ?: return
+        val categoryId = topic?.categoryId ?: return
         MoveTargetDialogFragment(
             title = "\uC774\uB3D9\uD560 \uC8FC\uC81C",
             addHint = "\uC0C8 \uC8FC\uC81C \uC785\uB825",
-            loadTargets = { InMemoryDataStore.getLogTopics().map { MoveTarget(it.id, it.title) } },
-            onAddTarget = { title -> InMemoryDataStore.addLogTopic(categoryId, title) },
+            loadTargets = { topics.map { MoveTarget(it.id, it.title) } },
+            onAddTarget = { title ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.addLogTopic(categoryId, title)
+                    reloadTopic()
+                }
+            },
             onTargetSelected = { target ->
-                InMemoryDataStore.moveLogEntriesToTopic(selectionController.selectedItemIds, target.id)
-                selectionController.exit()
-                renderEntries()
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.moveLogEntriesToTopic(selectionController.selectedItemIds, target.id)
+                    selectionController.exit()
+                    reloadTopic()
+                }
             }
         ).show(childFragmentManager, "move_log_topic_entries")
     }
 
     private fun renderEntries() {
-        val entries = InMemoryDataStore.getLogEntriesByTopic(topicId)
         entryAdapter.submitList(entries)
         binding?.emptyText?.visibility = if (entries.isEmpty()) View.VISIBLE else View.GONE
         binding?.entryList?.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
@@ -215,11 +219,47 @@ class LogTopicDetailFragment : Fragment() {
     }
 
     private fun confirmDeleteTopic() {
-        val topicTitle = InMemoryDataStore.getLogTopic(topicId)?.title
+        val topicTitle = topic?.title
         DeleteConfirmDialogHelper.showSingle(requireContext(), topicTitle) {
-            InMemoryDataStore.deleteLogTopic(topicId)
-            findNavController().navigateUp()
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.deleteLogTopic(topicId)
+                findNavController().navigateUp()
+            }
         }
+    }
+
+    private fun reloadTopic() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            topic = repository.getLogTopicById(topicId)
+            if (topic == null) {
+                findNavController().navigateUp()
+                return@launch
+            }
+            category = repository.getLogCategoryById(topic?.categoryId.orEmpty())
+            topics = repository.getLogTopics()
+            entries = repository.getLogEntriesByTopicId(topicId)
+            renderTopic()
+            renderEntries()
+        }
+    }
+
+    private fun renderTopic() {
+        val current = binding ?: return
+        val currentTopic = topic ?: return
+        current.root.setHeader(
+            title = currentTopic.title,
+            action = "\u2315",
+            showBack = true,
+            onBack = { findNavController().popBackStack() },
+            onAction = {
+                // TODO: Connect log entry search.
+            }
+        )
+        current.root.findViewById<TextView>(R.id.headerMore)?.apply {
+            visibility = View.VISIBLE
+            setOnClickListener { showTopicMenu(this) }
+        }
+        current.categoryText.text = category?.name.orEmpty()
     }
 
     private fun showFab() {
@@ -240,6 +280,9 @@ class LogTopicDetailFragment : Fragment() {
 
     private val selectionController
         get() = (requireActivity() as MainActivity).selectionController
+
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
 
     private fun entrySelectionScope(): String = "log-entries:$topicId"
 

@@ -43,6 +43,15 @@ object DeleteConfirmDialogHelper {
         )
     }
 
+    fun showCustom(
+        context: Context,
+        title: String,
+        message: String,
+        onDelete: () -> Unit
+    ) {
+        show(context, title, message, onDelete)
+    }
+
     private fun show(
         context: Context,
         title: String,

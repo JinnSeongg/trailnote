@@ -53,6 +53,19 @@
             android:paddingBottom="20dp" />
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/logTopicAddButton"
+        android:layout_width="@dimen/fab_size"
+        android:layout_height="@dimen/fab_size"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="20dp"
+        android:background="@drawable/bg_fab"
+        android:gravity="center"
+        android:text="+"
+        android:textColor="@color/white"
+        android:textSize="28sp"
+        android:visibility="gone" />
+
     <include
         android:id="@+id/categoryQuickAdd"
         layout="@layout/view_bottom_quick_add" />
