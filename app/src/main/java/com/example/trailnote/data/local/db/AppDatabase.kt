@@ -24,6 +24,7 @@ import com.example.trailnote.data.local.entity.MilestoneEntity
 import com.example.trailnote.data.local.entity.ProjectCategoryEntity
 import com.example.trailnote.data.local.entity.ProjectEntity
 import com.example.trailnote.data.local.entity.RoutineEntity
+import com.example.trailnote.data.local.entity.RoutineExposureBagEntity
 import com.example.trailnote.data.local.entity.ShortTaskEntity
 import com.example.trailnote.data.local.entity.UserProfileEntity
 
@@ -45,9 +46,10 @@ import com.example.trailnote.data.local.entity.UserProfileEntity
         AchievementEntity::class,
         ActivityRecordEntity::class,
         AppPreferenceEntity::class,
-        ProjectCategoryEntity::class
+        ProjectCategoryEntity::class,
+        RoutineExposureBagEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

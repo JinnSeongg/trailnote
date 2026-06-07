@@ -10,6 +10,7 @@ import com.example.trailnote.data.local.entity.DailyHomeStateEntity
 import com.example.trailnote.data.local.entity.HomeGoalSettingsEntity
 import com.example.trailnote.data.local.entity.HomeTaskEntity
 import com.example.trailnote.data.local.entity.AppPreferenceEntity
+import com.example.trailnote.data.local.entity.RoutineExposureBagEntity
 
 @Dao
 interface HomeDao {
@@ -37,6 +38,9 @@ interface HomeDao {
     @Query("SELECT * FROM daily_home_states WHERE date = :date")
     suspend fun getDailyHomeState(date: String): DailyHomeStateEntity?
 
+    @Query("SELECT * FROM routine_exposure_bags WHERE id = 1")
+    suspend fun getRoutineExposureBag(): RoutineExposureBagEntity?
+
     @Query("SELECT * FROM app_preferences WHERE `key` = :key")
     suspend fun getPreference(key: String): AppPreferenceEntity?
 
@@ -54,6 +58,9 @@ interface HomeDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateDailyHomeState(state: DailyHomeStateEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateRoutineExposureBag(bag: RoutineExposureBagEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun setPreference(preference: AppPreferenceEntity)

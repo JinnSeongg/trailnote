@@ -22,6 +22,7 @@ import com.example.trailnote.data.local.entity.ProjectEntity
 import com.example.trailnote.data.local.entity.MilestoneEntity
 import com.example.trailnote.data.local.entity.ProjectCategoryEntity
 import com.example.trailnote.data.local.entity.RoutineEntity
+import com.example.trailnote.data.local.entity.RoutineExposureBagEntity
 import com.example.trailnote.data.local.entity.ShortTaskEntity
 import com.example.trailnote.data.local.entity.UserProfileEntity
 import com.example.trailnote.domain.model.GrowthArea
@@ -559,7 +560,7 @@ class TrailNoteRepository(
     suspend fun updateRoutineFixedState(routineId: String, isFixed: Boolean): Routine? {
         val updatedRows = growthDao.updateRoutineFixedState(routineId, isFixed, currentDate())
         if (updatedRows == 0) return null
-        reconcileDailyHomeState(currentDate())
+        adjustTodayRoutineGoalsForCountChange(currentDate(), getHomeGoalSettings().randomTodayGoalCount)
         return growthDao.getRoutineById(routineId)?.toDomain()
     }
 
@@ -621,6 +622,7 @@ class TrailNoteRepository(
         val normalizedCount = count.coerceAtLeast(0)
         val settings = HomeGoalSettingsEntity(randomTodayGoalCount = normalizedCount)
         homeDao.insertOrUpdateHomeGoalSettings(settings)
+        adjustTodayRoutineGoalsForCountChange(currentDate(), normalizedCount)
         return HomeGoalSettings(normalizedCount)
     }
 
@@ -629,7 +631,7 @@ class TrailNoteRepository(
     }
 
     suspend fun getTodayRandomRoutines(date: String): List<Routine> {
-        val state = reconcileDailyHomeState(date) ?: getOrCreateDailyHomeState(date)
+        val state = getOrCreateDailyHomeState(date)
         val selectedIds = state.selectedRoutineIds.toIdList()
         if (selectedIds.isEmpty()) return emptyList()
         val routinesById = growthDao.getRoutinesByIds(selectedIds).associateBy { it.id }
@@ -639,12 +641,11 @@ class TrailNoteRepository(
     }
 
     suspend fun getOrCreateDailyHomeState(date: String): DailyHomeStateEntity {
-        homeDao.getDailyHomeState(date)?.let { return it }
         val settings = getHomeGoalSettings()
-        val selectedIds = growthDao.getRandomCandidateRoutines()
-            .shuffled()
-            .take(settings.randomTodayGoalCount)
-            .map { it.id }
+        homeDao.getDailyHomeState(date)?.let {
+            return adjustDailyHomeState(it, settings.randomTodayGoalCount)
+        }
+        val selectedIds = drawRoutineIdsFromBag(settings.randomTodayGoalCount)
         val state = DailyHomeStateEntity(
             date = date,
             selectedRoutineIds = selectedIds.joinToString(ID_SEPARATOR),
@@ -654,38 +655,109 @@ class TrailNoteRepository(
         return state
     }
 
-    private suspend fun reconcileDailyHomeState(date: String): DailyHomeStateEntity? {
-        val state = homeDao.getDailyHomeState(date) ?: return null
-        val settings = getHomeGoalSettings()
-        val targetCount = settings.randomTodayGoalCount.coerceAtLeast(0)
+    suspend fun adjustTodayRoutineGoalsForCountChange(date: String, newCount: Int): DailyHomeStateEntity {
+        return homeDao.getDailyHomeState(date)
+            ?.let { adjustDailyHomeState(it, newCount) }
+            ?: DailyHomeStateEntity(
+                date = date,
+                selectedRoutineIds = drawRoutineIdsFromBag(newCount).joinToString(ID_SEPARATOR),
+                lastResetAt = currentDate()
+            ).also { homeDao.insertOrUpdateDailyHomeState(it) }
+    }
+
+    private suspend fun adjustDailyHomeState(state: DailyHomeStateEntity, requestedCount: Int): DailyHomeStateEntity {
+        val candidateIds = getRandomCandidateRoutineIds()
+        val targetCount = requestedCount.coerceAtLeast(0).coerceAtMost(candidateIds.size)
         val selectedIds = state.selectedRoutineIds.toIdList()
-        val selectedRoutines = if (selectedIds.isEmpty()) {
-            emptyMap()
-        } else {
-            growthDao.getRoutinesByIds(selectedIds).associateBy { it.id }
-        }
         val activeRandomIds = selectedIds
-            .mapNotNull { selectedRoutines[it] }
-            .filter { it.isActive && !it.isFixed }
-            .map { it.id }
+            .filter { it in candidateIds }
+            .distinct()
             .take(targetCount)
-        val fillIds = if (activeRandomIds.size < targetCount) {
-            growthDao.getRandomCandidateRoutines()
-                .filterNot { it.id in activeRandomIds }
-                .shuffled()
-                .take(targetCount - activeRandomIds.size)
-                .map { it.id }
+        val adjustedIds = if (activeRandomIds.size < targetCount) {
+            activeRandomIds + drawRoutineIdsFromBag(
+                count = targetCount - activeRandomIds.size,
+                excludedIds = activeRandomIds.toSet()
+            )
         } else {
-            emptyList()
+            activeRandomIds
         }
-        val reconciledIds = activeRandomIds + fillIds
-        if (reconciledIds == selectedIds) return state
+        if (adjustedIds == selectedIds) return state
         val updated = state.copy(
-            selectedRoutineIds = reconciledIds.joinToString(ID_SEPARATOR),
+            selectedRoutineIds = adjustedIds.joinToString(ID_SEPARATOR),
             lastResetAt = currentDate()
         )
         homeDao.insertOrUpdateDailyHomeState(updated)
         return updated
+    }
+
+    private suspend fun getRoutineExposureBag(): RoutineExposureBagEntity? {
+        return homeDao.getRoutineExposureBag()
+    }
+
+    private suspend fun saveRoutineExposureBag(bag: RoutineExposureBagEntity) {
+        homeDao.insertOrUpdateRoutineExposureBag(bag)
+    }
+
+    private suspend fun drawRoutineIdsFromBag(
+        count: Int,
+        excludedIds: Set<String> = emptySet()
+    ): List<String> {
+        if (count <= 0) return emptyList()
+        val candidateIds = getRandomCandidateRoutineIds()
+        val targetCount = count.coerceAtMost((candidateIds - excludedIds).size)
+        if (targetCount <= 0) return emptyList()
+
+        var remainingIds = normalizeRoutineExposureBag(candidateIds).toMutableList()
+        val drawnIds = mutableListOf<String>()
+        while (drawnIds.size < targetCount) {
+            remainingIds = remainingIds
+                .filter { it in candidateIds && it !in excludedIds && it !in drawnIds }
+                .toMutableList()
+            if (remainingIds.isEmpty()) {
+                remainingIds = candidateIds
+                    .filter { it !in excludedIds && it !in drawnIds }
+                    .shuffled()
+                    .toMutableList()
+            }
+            if (remainingIds.isEmpty()) break
+            drawnIds += remainingIds.removeAt(0)
+        }
+
+        saveRoutineExposureBag(
+            RoutineExposureBagEntity(
+                remainingRoutineIds = remainingIds.joinToString(ID_SEPARATOR),
+                candidateRoutineIds = candidateIds.joinToString(ID_SEPARATOR),
+                updatedAt = currentDate()
+            )
+        )
+        return drawnIds
+    }
+
+    private suspend fun normalizeRoutineExposureBag(candidateIds: List<String>): List<String> {
+        val bag = getRoutineExposureBag()
+        val storedRemainingIds = bag?.remainingRoutineIds?.toIdList().orEmpty()
+        val storedCandidateIds = bag?.candidateRoutineIds?.toIdList().orEmpty()
+        val newCandidateIds = candidateIds.filterNot { it in storedCandidateIds }
+        val normalizedRemainingIds = (
+            storedRemainingIds.filter { it in candidateIds } + newCandidateIds.shuffled()
+        ).distinct()
+        val shouldSave = bag == null ||
+            normalizedRemainingIds != storedRemainingIds ||
+            candidateIds != storedCandidateIds
+        if (shouldSave) {
+            saveRoutineExposureBag(
+                RoutineExposureBagEntity(
+                    remainingRoutineIds = normalizedRemainingIds.joinToString(ID_SEPARATOR),
+                    candidateRoutineIds = candidateIds.joinToString(ID_SEPARATOR),
+                    updatedAt = currentDate()
+                )
+            )
+        }
+        return normalizedRemainingIds
+    }
+
+    private suspend fun getRandomCandidateRoutineIds(): List<String> {
+        return growthDao.getRandomCandidateRoutines().map { it.id }.distinct()
     }
 
     suspend fun getPreference(key: String): String? {

@@ -16,7 +16,7 @@ object AppDatabaseProvider {
                 AppDatabase::class.java,
                 AppDatabase.DATABASE_NAME
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 .also { database = it }
         }
@@ -94,6 +94,22 @@ object AppDatabaseProvider {
             db.execSQL("DROP TABLE `projects`")
             db.execSQL("ALTER TABLE `projects_new` RENAME TO `projects`")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_projects_categoryId` ON `projects` (`categoryId`)")
+        }
+    }
+
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `routine_exposure_bags` (
+                    `id` INTEGER NOT NULL,
+                    `remainingRoutineIds` TEXT NOT NULL,
+                    `candidateRoutineIds` TEXT NOT NULL,
+                    `updatedAt` TEXT NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
         }
     }
 }
