@@ -21,11 +21,16 @@ import com.example.trailnote.data.local.entity.LogTopicEntity
 import com.example.trailnote.data.local.entity.ProjectEntity
 import com.example.trailnote.data.local.entity.MilestoneEntity
 import com.example.trailnote.data.local.entity.ProjectCategoryEntity
+import com.example.trailnote.data.local.entity.RoutineCompletionRecordEntity
 import com.example.trailnote.data.local.entity.RoutineEntity
 import com.example.trailnote.data.local.entity.RoutineExposureBagEntity
 import com.example.trailnote.data.local.entity.ShortTaskEntity
 import com.example.trailnote.data.local.entity.UserProfileEntity
+import com.example.trailnote.data.sample.SampleProfile
+import com.example.trailnote.domain.achievement.AchievementEvaluator
+import com.example.trailnote.domain.achievement.PersonalAchievementGenerator
 import com.example.trailnote.domain.model.GrowthArea
+import com.example.trailnote.domain.model.GrowthColorPalette
 import com.example.trailnote.domain.model.GrowthTopic
 import com.example.trailnote.domain.model.HomeGoalSettings
 import com.example.trailnote.domain.model.LogCategory
@@ -33,15 +38,27 @@ import com.example.trailnote.domain.model.LogCategoryType
 import com.example.trailnote.domain.model.LogEntry
 import com.example.trailnote.domain.model.LogTopic
 import com.example.trailnote.domain.model.Milestone
+import com.example.trailnote.domain.model.Achievement
+import com.example.trailnote.domain.model.AchievementStats
+import com.example.trailnote.domain.model.AchievementUnlockResult
+import com.example.trailnote.domain.model.ActivityRecord
+import com.example.trailnote.domain.model.ActivityStatsSummary
+import com.example.trailnote.domain.model.ActivityTrendPoint
+import com.example.trailnote.domain.model.ProfileSummary
 import com.example.trailnote.domain.model.Project
 import com.example.trailnote.domain.model.ProjectCategory
 import com.example.trailnote.domain.model.RepeatType
 import com.example.trailnote.domain.model.Routine
 import com.example.trailnote.domain.model.ShortTask
+import com.example.trailnote.domain.model.StatsPeriod
 import com.example.trailnote.domain.model.Task
+import com.example.trailnote.domain.model.VisitStats
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.UUID
+import android.util.Log
 
 class TrailNoteRepository(
     private val projectDao: ProjectDao,
@@ -52,6 +69,9 @@ class TrailNoteRepository(
     private val achievementDao: AchievementDao,
     private val activityRecordDao: ActivityRecordDao
 ) {
+    private val achievementEvaluator = AchievementEvaluator()
+    private val personalAchievementGenerator = PersonalAchievementGenerator()
+
     suspend fun getProjectCategories(): List<ProjectCategory> = projectDao.getProjectCategories().map { it.toDomain() }
     suspend fun getProjects(): List<Project> = projectDao.getProjects().map { it.toDomain() }
     suspend fun getProjectEntities(): List<ProjectEntity> = projectDao.getProjects()
@@ -71,7 +91,11 @@ class TrailNoteRepository(
     }
 
     suspend fun insertProject(project: ProjectEntity) = projectDao.insertProject(project)
-    suspend fun updateProject(project: ProjectEntity) = projectDao.updateProject(project)
+    suspend fun updateProject(project: ProjectEntity) {
+        val current = projectDao.getProjectById(project.id)
+        projectDao.updateProject(project)
+        if (current != null) updateProjectCompletionActivity(current, project)
+    }
     suspend fun deleteProjectById(id: String) = deleteProject(id)
 
     suspend fun addProject(title: String, category: String = DEFAULT_CATEGORY): Project {
@@ -96,6 +120,7 @@ class TrailNoteRepository(
             isArchived = false
         )
         projectDao.insertProject(project)
+        recordCreationActivity(ActivityTypes.PROJECT_CREATED, project.id, ActivityTargetTypes.PROJECT)
         return project.toDomain()
     }
 
@@ -127,6 +152,7 @@ class TrailNoteRepository(
             updatedAt = now
         )
         projectDao.insertMilestone(milestone)
+        recordCreationActivity(ActivityTypes.MILESTONE_CREATED, milestone.id, ActivityTargetTypes.MILESTONE)
         touchProject(projectId)
         return milestone.toDomain()
     }
@@ -143,6 +169,7 @@ class TrailNoteRepository(
             completedAt = null
         )
         projectDao.insertShortTask(shortTask)
+        recordCreationActivity(ActivityTypes.SHORT_TASK_CREATED, shortTask.id, ActivityTargetTypes.SHORT_TASK)
         touchProjectByMilestoneId(milestoneId)
         return shortTask.toDomain()
     }
@@ -159,6 +186,7 @@ class TrailNoteRepository(
             updatedAt = currentTimestamp()
         )
         projectDao.updateProject(updated)
+        updateProjectCompletionActivity(current, updated)
         return updated.toDomain()
     }
 
@@ -225,6 +253,19 @@ class TrailNoteRepository(
             completedAt = if (shortTask.isDone) current.completedAt ?: currentTimestamp() else null
         )
         projectDao.updateShortTask(updated)
+        when {
+            !current.isDone && updated.isDone -> recordCompletionActivity(
+                ActivityTypes.SHORT_TASK_COMPLETED,
+                updated.id,
+                ActivityTargetTypes.SHORT_TASK
+            )
+            current.isDone && !updated.isDone -> deleteActivity(
+                ActivityTypes.SHORT_TASK_COMPLETED,
+                updated.id,
+                ActivityTargetTypes.SHORT_TASK,
+                currentDate()
+            )
+        }
         touchProjectByMilestoneId(updated.milestoneId)
         return updated.toDomain()
     }
@@ -236,6 +277,11 @@ class TrailNoteRepository(
             completedAt = if (isDone) currentTimestamp() else null
         )
         projectDao.updateShortTask(updated)
+        if (isDone) {
+            recordCompletionActivity(ActivityTypes.SHORT_TASK_COMPLETED, shortTaskId, ActivityTargetTypes.SHORT_TASK)
+        } else {
+            deleteActivity(ActivityTypes.SHORT_TASK_COMPLETED, shortTaskId, ActivityTargetTypes.SHORT_TASK, currentDate())
+        }
         touchProjectByMilestoneId(updated.milestoneId)
         return updated.toDomain()
     }
@@ -334,6 +380,7 @@ class TrailNoteRepository(
             updatedAt = now
         )
         logDao.insertLogEntry(entry)
+        recordCreationActivity(ActivityTypes.LOG_CREATED, entry.id, ActivityTargetTypes.LOG)
         return entry.toDomain()
     }
 
@@ -399,8 +446,17 @@ class TrailNoteRepository(
         logDao.moveLogEntriesToTopic(entryIds, topicId, currentTimestamp())
     }
 
-    suspend fun getGrowthAreas(): List<GrowthArea> = growthDao.getGrowthAreas().map { it.toDomain() }
-    suspend fun getGrowthAreaById(areaId: String): GrowthArea? = growthDao.getGrowthAreaById(areaId)?.toDomain()
+    suspend fun getGrowthAreas(): List<GrowthArea> {
+        val topicsByAreaId = growthDao.getGrowthTopics().groupBy { it.growthAreaId }
+        return growthDao.getGrowthAreas().map { area ->
+            area.toDomain(level = calculateGrowthAreaLevel(topicsByAreaId[area.id].orEmpty()), exp = 0)
+        }
+    }
+
+    suspend fun getGrowthAreaById(areaId: String): GrowthArea? {
+        val area = growthDao.getGrowthAreaById(areaId) ?: return null
+        return area.toDomain(level = calculateGrowthAreaLevel(areaId), exp = 0)
+    }
     suspend fun getGrowthTopics(): List<GrowthTopic> = growthDao.getGrowthTopics().map { it.toDomain() }
     suspend fun getGrowthTopicsByAreaId(areaId: String): List<GrowthTopic> {
         return growthDao.getGrowthTopicsByAreaId(areaId).map { it.toDomain() }
@@ -424,12 +480,14 @@ class TrailNoteRepository(
             description = "",
             level = 1,
             exp = 0,
+            colorHex = GrowthColorPalette.DEFAULT_COLOR,
             orderIndex = growthDao.getGrowthAreas().size + 1,
             createdAt = now,
             updatedAt = now
         )
         growthDao.insertGrowthArea(area)
-        return area.toDomain()
+        recordCreationActivity(ActivityTypes.GROWTH_AREA_CREATED, area.id, ActivityTargetTypes.GROWTH_AREA)
+        return area.toDomain(level = 1, exp = 0)
     }
 
     suspend fun addGrowthTopic(growthAreaId: String, title: String): GrowthTopic {
@@ -446,6 +504,7 @@ class TrailNoteRepository(
             updatedAt = now
         )
         growthDao.insertGrowthTopic(topic)
+        recordCreationActivity(ActivityTypes.GROWTH_TOPIC_CREATED, topic.id, ActivityTargetTypes.GROWTH_TOPIC)
         return topic.toDomain()
     }
 
@@ -466,6 +525,7 @@ class TrailNoteRepository(
             lastCompletedDate = null
         )
         growthDao.insertRoutine(routine)
+        recordCreationActivity(ActivityTypes.ROUTINE_CREATED, routine.id, ActivityTargetTypes.ROUTINE)
         return routine.toDomain()
     }
 
@@ -476,6 +536,7 @@ class TrailNoteRepository(
             description = area.description,
             level = area.level,
             exp = area.exp,
+            colorHex = area.colorHex,
             updatedAt = currentDate()
         )
         growthDao.updateGrowthArea(updated)
@@ -494,6 +555,18 @@ class TrailNoteRepository(
         val updated = current.copy(description = description, updatedAt = currentDate())
         growthDao.updateGrowthArea(updated)
         return updated.toDomain()
+    }
+
+    suspend fun updateGrowthAreaColor(areaId: String, colorHex: String): GrowthArea? {
+        val before = growthDao.getGrowthAreaById(areaId)?.colorHex
+        val normalizedColor = GrowthColorPalette.normalize(colorHex)
+        val rowCount = growthDao.updateGrowthAreaColor(areaId, normalizedColor, currentDate())
+        val updated = getGrowthAreaById(areaId)
+        Log.d(
+            GROWTH_COLOR_DEBUG_TAG,
+            "repo update areaId=$areaId before=$before requested=$colorHex normalized=$normalizedColor rows=$rowCount after=${updated?.colorHex}"
+        )
+        return updated
     }
 
     suspend fun updateGrowthTopic(topic: GrowthTopic): GrowthTopic? {
@@ -541,13 +614,71 @@ class TrailNoteRepository(
 
     suspend fun updateRoutineDoneState(routineId: String, isDoneToday: Boolean): Routine? {
         val current = growthDao.getRoutineById(routineId) ?: return null
+        val today = currentDate()
         val updated = current.copy(
             isDoneToday = isDoneToday,
-            updatedAt = currentDate(),
-            lastCompletedDate = if (isDoneToday) currentDate() else null
+            updatedAt = today,
+            lastCompletedDate = if (isDoneToday) today else null
         )
+        if (isDoneToday) {
+            val insertedId = growthDao.insertRoutineCompletionIfAbsent(
+                RoutineCompletionRecordEntity(
+                    routineId = routineId,
+                    date = today,
+                    completedAt = currentTimestamp()
+                )
+            )
+            if (insertedId != INSERT_IGNORED) {
+                addGrowthTopicProgress(current.growthTopicId, ROUTINE_COMPLETION_PROGRESS)
+                recordActivity(
+                    type = ActivityTypes.ROUTINE_COMPLETED,
+                    date = today,
+                    value = 1,
+                    targetId = routineId,
+                    targetType = ActivityTargetTypes.ROUTINE
+                )
+            }
+        } else {
+            // Completion history stays intact so same-day re-checks do not grant growth twice.
+        }
+        val latestCompletionDate = if (isDoneToday) {
+            today
+        } else {
+            growthDao.getLatestRoutineCompletionDate(routineId)
+        }
         growthDao.updateRoutine(updated)
-        return updated.toDomain()
+        val finalRoutine = updated.copy(lastCompletedDate = latestCompletionDate)
+        if (finalRoutine != updated) {
+            growthDao.updateRoutine(finalRoutine)
+        }
+        return finalRoutine.toDomain()
+    }
+
+    suspend fun calculateGrowthAreaLevel(areaId: String): Int {
+        return calculateGrowthAreaLevel(growthDao.getGrowthTopicsByAreaId(areaId))
+    }
+
+    suspend fun calculateUserLevelFromGrowthAreas(): Int {
+        val topicsByAreaId = growthDao.getGrowthTopics().groupBy { it.growthAreaId }
+        return growthDao.getGrowthAreas().sumOf { area ->
+            calculateGrowthAreaLevel(topicsByAreaId[area.id].orEmpty())
+        }
+    }
+
+    private fun calculateGrowthAreaLevel(topics: List<GrowthTopicEntity>): Int {
+        if (topics.isEmpty()) return DEFAULT_GROWTH_AREA_LEVEL
+        return topics.sumOf { it.level } / topics.size
+    }
+
+    private suspend fun addGrowthTopicProgress(topicId: String, progressDelta: Int) {
+        val topic = growthDao.getGrowthTopicById(topicId) ?: return
+        val totalProgress = topic.exp + progressDelta
+        val updated = topic.copy(
+            level = topic.level + totalProgress / GROWTH_TOPIC_LEVEL_PROGRESS,
+            exp = totalProgress % GROWTH_TOPIC_LEVEL_PROGRESS,
+            updatedAt = currentDate()
+        )
+        growthDao.updateGrowthTopic(updated)
     }
 
     suspend fun updateRoutineRepeatType(routineId: String, repeatType: RepeatType): Routine? {
@@ -595,6 +726,7 @@ class TrailNoteRepository(
             orderIndex = homeDao.getHomeTasksByDate(date).size + 1
         )
         homeDao.insertHomeTask(task)
+        recordCreationActivity(ActivityTypes.TODO_CREATED, task.id, ActivityTargetTypes.TODO, date)
         return task.toDomain()
     }
 
@@ -605,6 +737,11 @@ class TrailNoteRepository(
             completedAt = if (isDone) currentDate() else null
         )
         homeDao.updateHomeTask(updated)
+        if (isDone) {
+            recordCompletionActivity(ActivityTypes.TODO_COMPLETED, taskId, ActivityTargetTypes.TODO, current.date)
+        } else {
+            deleteActivity(ActivityTypes.TODO_COMPLETED, taskId, ActivityTargetTypes.TODO, current.date)
+        }
         return updated.toDomain()
     }
 
@@ -615,11 +752,11 @@ class TrailNoteRepository(
             ?: HomeGoalSettingsEntity(randomTodayGoalCount = DEFAULT_RANDOM_TODAY_GOAL_COUNT).also {
                 homeDao.insertOrUpdateHomeGoalSettings(it)
             }
-        return HomeGoalSettings(settings.randomTodayGoalCount)
+        return HomeGoalSettings(settings.randomTodayGoalCount.coerceIn(MIN_RANDOM_TODAY_GOAL_COUNT, MAX_RANDOM_TODAY_GOAL_COUNT))
     }
 
     suspend fun updateRandomTodayGoalCount(count: Int): HomeGoalSettings {
-        val normalizedCount = count.coerceAtLeast(0)
+        val normalizedCount = count.coerceIn(MIN_RANDOM_TODAY_GOAL_COUNT, MAX_RANDOM_TODAY_GOAL_COUNT)
         val settings = HomeGoalSettingsEntity(randomTodayGoalCount = normalizedCount)
         homeDao.insertOrUpdateHomeGoalSettings(settings)
         adjustTodayRoutineGoalsForCountChange(currentDate(), normalizedCount)
@@ -667,7 +804,7 @@ class TrailNoteRepository(
 
     private suspend fun adjustDailyHomeState(state: DailyHomeStateEntity, requestedCount: Int): DailyHomeStateEntity {
         val candidateIds = getRandomCandidateRoutineIds()
-        val targetCount = requestedCount.coerceAtLeast(0).coerceAtMost(candidateIds.size)
+        val targetCount = requestedCount.coerceIn(MIN_RANDOM_TODAY_GOAL_COUNT, MAX_RANDOM_TODAY_GOAL_COUNT).coerceAtMost(candidateIds.size)
         val selectedIds = state.selectedRoutineIds.toIdList()
         val activeRandomIds = selectedIds
             .filter { it in candidateIds }
@@ -807,8 +944,405 @@ class TrailNoteRepository(
     suspend fun getActivityRecords() = activityRecordDao.getActivityRecords()
     suspend fun insertActivityRecord(record: ActivityRecordEntity) = activityRecordDao.insertActivityRecord(record)
 
+    suspend fun recordActivity(
+        type: String,
+        date: String,
+        value: Int,
+        targetId: String? = null,
+        targetType: String? = null
+    ) {
+        activityRecordDao.insertActivityRecord(
+            ActivityRecordEntity(
+                id = UUID.randomUUID().toString(),
+                type = type,
+                targetId = targetId,
+                targetType = targetType,
+                date = date,
+                value = value,
+                createdAt = currentTimestamp()
+            )
+        )
+    }
+
+    private suspend fun recordCreationActivity(
+        type: String,
+        targetId: String,
+        targetType: String,
+        date: String = currentDate()
+    ) {
+        if (activityRecordDao.countActivitiesByTypeAndTarget(type, targetId) > 0) return
+        recordActivity(type, date, 1, targetId, targetType)
+    }
+
+    private suspend fun recordCompletionActivity(
+        type: String,
+        targetId: String,
+        targetType: String,
+        date: String = currentDate()
+    ) {
+        if (activityRecordDao.countActivitiesByTypeTargetAndDate(type, targetId, date) > 0) return
+        recordActivity(type, date, 1, targetId, targetType)
+    }
+
+    suspend fun recordAppVisitIfNeeded() {
+        val today = currentDate()
+        if (activityRecordDao.countActivitiesByTypeTargetAndDate(ActivityTypes.APP_VISIT, APP_TARGET_ID, today) > 0) {
+            return
+        }
+        recordActivity(
+            type = ActivityTypes.APP_VISIT,
+            date = today,
+            value = 1,
+            targetId = APP_TARGET_ID,
+            targetType = ActivityTargetTypes.APP
+        )
+    }
+
+    suspend fun getVisitStats(): VisitStats {
+        val visitDates = activityRecordDao.getActivitiesByType(ActivityTypes.APP_VISIT)
+            .map { it.date }
+            .distinct()
+            .sorted()
+        if (visitDates.isEmpty()) {
+            return VisitStats(
+                totalVisitDays = 0,
+                currentStreakDays = 0,
+                firstVisitDate = null,
+                lastVisitDate = null
+            )
+        }
+        val visitDateSet = visitDates.toSet()
+        val today = LocalDate.parse(currentDate())
+        // Streak is counted from today. App startup records today's visit, so missing today means current streak is 0.
+        var cursor = today
+        var streak = 0
+        while (cursor.toString() in visitDateSet) {
+            streak += 1
+            cursor = cursor.minusDays(1)
+        }
+        return VisitStats(
+            totalVisitDays = visitDates.size,
+            currentStreakDays = streak,
+            firstVisitDate = visitDates.first(),
+            lastVisitDate = visitDates.last()
+        )
+    }
+
+    suspend fun getAchievementStats(): AchievementStats {
+        val projects = projectDao.getProjects()
+        val logCategories = logDao.getLogCategories()
+        val logTopics = logDao.getLogTopics()
+        val logEntries = logDao.getLogEntries()
+        val routines = growthDao.getRoutines()
+        val growthAreas = growthDao.getGrowthAreas()
+        val growthTopics = growthDao.getGrowthTopics()
+        val profile = profileDao.getUserProfile()
+        val routineById = routines.associateBy { it.id }
+        val routineCompletions = growthDao.getRoutineCompletions()
+        val visitStats = getVisitStats()
+
+        val entriesByTopicId = logEntries.groupBy { it.topicId }
+        val topicsByCategoryId = logTopics.groupBy { it.categoryId }
+        val routineCompletionCountByRoutineId = routineCompletions
+            .groupingBy { it.routineId }
+            .eachCount()
+
+        return AchievementStats(
+            completedTaskCount = activityRecordDao.countActivitiesByType(ActivityTypes.TODO_COMPLETED),
+            completedProjectCount = projects.count { it.status.isDoneStatus() },
+            logCount = logEntries.size,
+            completedRoutineCount = routineCompletions.size,
+            completedNormalRoutineCount = routineCompletions.count { routineById[it.routineId]?.isFixed == false },
+            completedFixedRoutineCount = routineCompletions.count { routineById[it.routineId]?.isFixed == true },
+            fixedRoutineCount = routines.count { it.isFixed },
+            growthAreaCount = growthAreas.size,
+            growthTopicCount = growthTopics.size,
+            userLevel = calculateUserLevelFromGrowthAreas(),
+            completedShortTaskCount = projectDao.getShortTasks().count { it.isDone },
+            // MilestoneEntity has no completion state yet, so this cannot be derived accurately.
+            completedMilestoneCount = 0,
+            totalVisitDays = visitStats.totalVisitDays,
+            currentStreakDays = visitStats.currentStreakDays,
+            firstVisitDate = visitStats.firstVisitDate,
+            firstTaskCreatedDate = firstActivityDate(ActivityTypes.TODO_CREATED),
+            firstProjectCreatedDate = firstActivityDate(ActivityTypes.PROJECT_CREATED),
+            firstLogCreatedDate = firstActivityDate(ActivityTypes.LOG_CREATED),
+            firstRoutineCreatedDate = firstActivityDate(ActivityTypes.ROUTINE_CREATED),
+            logCountByCategory = logCategories.associate { category ->
+                val categoryTopicIds = topicsByCategoryId[category.id].orEmpty().map { it.id }.toSet()
+                category.id to categoryTopicIds.sumOf { topicId -> entriesByTopicId[topicId].orEmpty().size }
+            },
+            logCountByTopic = logTopics.associate { topic ->
+                topic.id to entriesByTopicId[topic.id].orEmpty().size
+            },
+            routineCompletionCountByRoutineId = routineCompletionCountByRoutineId,
+            // RoutineEntity has no level field; routine levels need a model/schema source before this can be populated.
+            routineLevelByRoutineId = emptyMap()
+        )
+    }
+
+    suspend fun getProfileSummaryFromDb(): ProfileSummary {
+        val profile = profileDao.getUserProfile()
+        val completedTaskCount = activityRecordDao.countActivitiesByType(ActivityTypes.TODO_COMPLETED)
+        val completedProjectCount = projectDao.getProjects().count { it.status.isDoneStatus() }
+        val logCount = logDao.getLogEntries().size
+        // Counts all persisted routine completion events, including fixed and random routines.
+        val completedRoutineCount = growthDao.countRoutineCompletions()
+
+        return ProfileSummary(
+            name = profile?.name ?: DEFAULT_PROFILE_NAME,
+            level = calculateUserLevelFromGrowthAreas(),
+            exp = 0,
+            completedTaskCount = completedTaskCount,
+            activeProjectCount = completedProjectCount,
+            logCount = logCount,
+            completedRoutineCount = completedRoutineCount,
+            featuredAchievementId = profile?.representativeAchievementId,
+            avatarVariant = 0
+        )
+    }
+
+    suspend fun getAchievementsFromDb(): List<Achievement> {
+        val achievements = achievementDao.getAchievements().map { it.toDomain() }
+        return achievements.ifEmpty { SampleProfile.achievements }
+    }
+
+    suspend fun refreshAchievementUnlocks(): AchievementUnlockResult {
+        val fixedAchievements = ensureAchievementDefinitions()
+        val existingAchievements = achievementDao.getAchievements().map { it.toDomain() }
+        val personalAchievements = generatePersonalProjectCompletionAchievements(existingAchievements) +
+            generatePersonalRoutineCompletionAchievements(existingAchievements)
+        if (personalAchievements.isNotEmpty()) {
+            achievementDao.insertAchievements(personalAchievements.map { it.toEntity() })
+        }
+        val stats = getAchievementStats()
+        val evaluatedAchievements = achievementEvaluator.evaluate(
+            stats = stats,
+            achievements = fixedAchievements,
+            unlockedAt = currentDate()
+        )
+        val newlyUnlockedAchievements = evaluatedAchievements.filter { evaluated ->
+            val current = fixedAchievements.firstOrNull { achievement -> achievement.id == evaluated.id }
+            current?.isUnlocked == false && evaluated.isUnlocked
+        }
+        if (newlyUnlockedAchievements.isNotEmpty()) {
+            achievementDao.insertAchievements(newlyUnlockedAchievements.map { it.toEntity() })
+        }
+        val existingPersonalAchievements = existingAchievements
+            .filter { personalAchievementGenerator.isPersonalAchievement(it.id) }
+            .filterNot { existing -> personalAchievements.any { generated -> generated.id == existing.id } }
+        return AchievementUnlockResult(
+            achievements = evaluatedAchievements + personalAchievements + existingPersonalAchievements,
+            newlyUnlockedAchievements = newlyUnlockedAchievements + personalAchievements.filter { generated ->
+                existingAchievements.none { existing -> existing.id == generated.id }
+            }
+        )
+    }
+
+    private suspend fun ensureAchievementDefinitions(): List<Achievement> {
+        val achievementsById = achievementDao.getAchievements().map { it.toDomain() }.associateBy { it.id }
+        val syncedAchievements = SampleProfile.achievements.map { definition ->
+            val existing = achievementsById[definition.id]
+            definition.copy(
+                isUnlocked = existing?.isUnlocked ?: definition.isUnlocked,
+                unlockedAt = existing?.unlockedAt ?: definition.unlockedAt
+            )
+        }
+        achievementDao.insertAchievements(syncedAchievements.map { it.toEntity() })
+        return syncedAchievements
+    }
+
+    private suspend fun generatePersonalProjectCompletionAchievements(
+        existingAchievements: List<Achievement>
+    ): List<Achievement> {
+        val completedProjects = projectDao.getProjects()
+            .filter { it.status.isDoneStatus() }
+            .map { it.toDomain() }
+        return personalAchievementGenerator.generateProjectCompletionAchievements(
+            completedProjects = completedProjects,
+            existingAchievements = existingAchievements,
+            unlockedAt = currentDate()
+        )
+    }
+
+    private suspend fun generatePersonalRoutineCompletionAchievements(
+        existingAchievements: List<Achievement>
+    ): List<Achievement> {
+        val completionCountByRoutineId = growthDao.getRoutineCompletions()
+            .groupingBy { it.routineId }
+            .eachCount()
+        return personalAchievementGenerator.generateRoutineCompletionAchievements(
+            routines = growthDao.getRoutines().map { it.toDomain() },
+            completionCountByRoutineId = completionCountByRoutineId,
+            existingAchievements = existingAchievements,
+            unlockedAt = currentDate()
+        )
+    }
+
+    suspend fun getUnlockedAchievementsForDisplay(limit: Int? = null): List<Achievement> {
+        return getUnlockedAchievementsForDisplay(refreshAchievementUnlocks().achievements, limit)
+    }
+
+    fun getUnlockedAchievementsForDisplay(
+        achievements: List<Achievement>,
+        limit: Int? = null
+    ): List<Achievement> {
+        val sortedAchievements = achievements
+            .withIndex()
+            .filter { (_, achievement) -> achievement.isUnlocked }
+            .sortedWith(
+                compareByDescending<IndexedValue<Achievement>> { (_, achievement) -> achievement.unlockedAt.orEmpty() }
+                    .thenByDescending { indexedAchievement -> indexedAchievement.index }
+            )
+            .map { (_, achievement) -> achievement }
+        return if (limit == null) sortedAchievements else sortedAchievements.take(limit)
+    }
+
+    suspend fun getAchievementById(id: String): Achievement? {
+        return getAchievementsFromDb().firstOrNull { achievement -> achievement.id == id }
+    }
+
+    suspend fun updateRepresentativeAchievement(achievementId: String) {
+        val now = currentDate()
+        val profile = profileDao.getUserProfile()
+        val updatedProfile = profile?.copy(
+            representativeAchievementId = achievementId,
+            updatedAt = now
+        ) ?: UserProfileEntity(
+            name = DEFAULT_PROFILE_NAME,
+            level = DEFAULT_PROFILE_LEVEL,
+            exp = DEFAULT_PROFILE_EXP,
+            representativeAchievementId = achievementId,
+            createdAt = now,
+            updatedAt = now
+        )
+        profileDao.insertUserProfile(updatedProfile)
+    }
+
+    suspend fun getActivityRecordsFromDb(): List<ActivityRecord> {
+        // Activity records are only partially connected; routine completion is recorded first.
+        return activityRecordDao.getActivityRecords()
+            .sortedBy { it.date }
+            .map { it.toDomain() }
+    }
+
+    suspend fun getActivityStats(period: StatsPeriod): ActivityStatsSummary {
+        return getActivityStatsForDate(period, currentDate())
+    }
+
+    suspend fun getActivityStatsForDate(period: StatsPeriod, todayString: String): ActivityStatsSummary {
+        val (startDate, endDate) = getStatsDateRange(period, todayString)
+        val routinesById = growthDao.getRoutines().associateBy { it.id }
+        val completions = growthDao.getRoutineCompletionsBetween(startDate, endDate)
+        val normalRoutineCompletedCount = completions.count { completion ->
+            routinesById[completion.routineId]?.isFixed == false
+        }
+        val fixedRoutineAverageCompletionRate = calculateFixedRoutineAverageCompletionRate(
+            startDate = startDate,
+            endDate = endDate,
+            completionsByDate = completions
+                .filter { routinesById[it.routineId]?.isFixed == true }
+                .groupBy { it.date }
+        )
+
+        return ActivityStatsSummary(
+            period = period,
+            startDate = startDate,
+            endDate = endDate,
+            todoCreatedCount = activityRecordDao.countByTypeBetween(ActivityTypes.TODO_CREATED, startDate, endDate),
+            logCreatedCount = activityRecordDao.countByTypeBetween(ActivityTypes.LOG_CREATED, startDate, endDate),
+            normalRoutineCompletedCount = normalRoutineCompletedCount,
+            fixedRoutineAverageCompletionRate = fixedRoutineAverageCompletionRate
+        )
+    }
+
+    suspend fun getRecentActivityTrend(days: Int = DEFAULT_TREND_DAYS): List<ActivityTrendPoint> {
+        if (days <= 0) return emptyList()
+        val today = LocalDate.parse(currentDate())
+        val dates = (days - 1 downTo 0).map { today.minusDays(it.toLong()).toString() }
+        val startDate = dates.first()
+        val endDate = dates.last()
+
+        val homeTasksByDate = homeDao.getHomeTasks().groupBy { it.date }
+        val routinesById = growthDao.getRoutines().associateBy { it.id }
+        val fixedRoutineIds = growthDao.getFixedActiveRoutines().map { it.id }.toSet()
+        val completionsByDate = growthDao.getRoutineCompletionsBetween(startDate, endDate).groupBy { it.date }
+        val dailyStatesByDate = homeDao.getDailyHomeStates().associateBy { it.date }
+
+        return dates.map { date ->
+            // Home task history is incomplete when completed past tasks are deleted; this uses only currently persisted rows.
+            val tasks = homeTasksByDate[date].orEmpty()
+            val todoRate = completionRateOrNull(
+                completedCount = tasks.count { it.isDone },
+                totalCount = tasks.size
+            )
+            // Historical fixed-routine membership is not snapshotted; current active fixed routines are used as the denominator.
+            val fixedRoutineRate = completionRateOrNull(
+                completedCount = completionsByDate[date].orEmpty()
+                    .map { it.routineId }
+                    .distinct()
+                    .count { it in fixedRoutineIds },
+                totalCount = fixedRoutineIds.size
+            )
+            val selectedDailyRoutineIds = dailyStatesByDate[date]
+                ?.selectedRoutineIds
+                ?.toIdList()
+                .orEmpty()
+                .filter { routinesById[it]?.isFixed == false }
+                .toSet()
+            val dailyRoutineRate = completionRateOrNull(
+                completedCount = completionsByDate[date].orEmpty()
+                    .map { it.routineId }
+                    .distinct()
+                    .count { it in selectedDailyRoutineIds },
+                totalCount = selectedDailyRoutineIds.size
+            )
+            // Average excludes components whose denominator is unavailable; if none are calculable, it returns 0.
+            val calculableRates = listOfNotNull(todoRate, fixedRoutineRate, dailyRoutineRate)
+            ActivityTrendPoint(
+                date = date,
+                todoCompletionRate = todoRate ?: 0,
+                fixedRoutineCompletionRate = fixedRoutineRate ?: 0,
+                dailyRoutineCompletionRate = dailyRoutineRate ?: 0,
+                averageCompletionRate = if (calculableRates.isEmpty()) 0 else calculableRates.sum() / calculableRates.size
+            )
+        }
+    }
+
     private fun ProjectEntity.toDomain(): Project {
         return Project(id, title, description, category, status, targetDate, categoryId, updatedAt)
+    }
+
+    private fun AchievementEntity.toDomain(): Achievement {
+        return Achievement(
+            id = id,
+            title = title,
+            description = description,
+            isUnlocked = isUnlocked,
+            category = category,
+            grade = rarity,
+            iconText = iconKey.ifBlank { DEFAULT_ACHIEVEMENT_ICON },
+            unlockedAt = unlockedAt
+        )
+    }
+
+    private fun Achievement.toEntity(): AchievementEntity {
+        return AchievementEntity(
+            id = id,
+            title = title,
+            description = description,
+            category = category,
+            rarity = grade,
+            iconKey = iconText,
+            isUnlocked = isUnlocked,
+            unlockedAt = unlockedAt,
+            progress = if (isUnlocked) 1 else 0,
+            target = 1
+        )
+    }
+
+    private fun ActivityRecordEntity.toDomain(): ActivityRecord {
+        return ActivityRecord(id, date, value)
     }
 
     private fun ProjectCategoryEntity.toDomain(): ProjectCategory {
@@ -847,8 +1381,11 @@ class TrailNoteRepository(
         )
     }
 
-    private fun GrowthAreaEntity.toDomain(): GrowthArea {
-        return GrowthArea(id, title, description, level, exp)
+    private fun GrowthAreaEntity.toDomain(
+        level: Int = this.level,
+        exp: Int = this.exp
+    ): GrowthArea {
+        return GrowthArea(id, title, description, level, exp, GrowthColorPalette.normalize(colorHex))
     }
 
     private fun GrowthTopicEntity.toDomain(): GrowthTopic {
@@ -875,6 +1412,82 @@ class TrailNoteRepository(
 
     private fun String.toIdList(): List<String> {
         return split(ID_SEPARATOR).map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    private fun String.isDoneStatus(): Boolean {
+        return trim().lowercase() in setOf("\uC644\uB8CC", "?꾨즺", "done", "completed")
+    }
+
+    private suspend fun firstActivityDate(type: String): String? {
+        return activityRecordDao.getActivitiesByType(type)
+            .map { it.date }
+            .minOrNull()
+    }
+
+    private fun completionRateOrNull(completedCount: Int, totalCount: Int): Int? {
+        if (totalCount <= 0) return null
+        return completedCount.coerceAtLeast(0) * 100 / totalCount
+    }
+
+    private suspend fun calculateFixedRoutineAverageCompletionRate(
+        startDate: String,
+        endDate: String,
+        completionsByDate: Map<String, List<RoutineCompletionRecordEntity>>
+    ): Int {
+        // Historical fixed-routine membership is not snapshotted yet; current active fixed routines are used as the denominator.
+        val fixedRoutineCount = growthDao.getFixedActiveRoutines().size
+        if (fixedRoutineCount == 0) return 0
+        val dates = datesBetween(startDate, endDate)
+        if (dates.isEmpty()) return 0
+        val totalRate = dates.sumOf { date ->
+            val completedFixedRoutineCount = completionsByDate[date]
+                .orEmpty()
+                .map { it.routineId }
+                .distinct()
+                .size
+            completedFixedRoutineCount * 100 / fixedRoutineCount
+        }
+        return totalRate / dates.size
+    }
+
+    private fun getStatsDateRange(period: StatsPeriod, todayString: String): Pair<String, String> {
+        val today = LocalDate.parse(todayString)
+        val start = when (period) {
+            StatsPeriod.DAILY -> today
+            StatsPeriod.WEEKLY -> today.minusDays((today.dayOfWeek.value - DayOfWeek.MONDAY.value).toLong())
+            StatsPeriod.MONTHLY -> today.withDayOfMonth(1)
+        }
+        return start.toString() to today.toString()
+    }
+
+    private fun datesBetween(startDate: String, endDate: String): List<String> {
+        val start = LocalDate.parse(startDate)
+        val end = LocalDate.parse(endDate)
+        if (start.isAfter(end)) return emptyList()
+        return (0L..ChronoUnit.DAYS.between(start, end))
+            .map { start.plusDays(it).toString() }
+    }
+
+    private suspend fun updateProjectCompletionActivity(current: ProjectEntity, updated: ProjectEntity) {
+        val wasDone = current.status.isDoneStatus()
+        val isDone = updated.status.isDoneStatus()
+        when {
+            !wasDone && isDone -> recordCompletionActivity(
+                ActivityTypes.PROJECT_COMPLETED,
+                updated.id,
+                ActivityTargetTypes.PROJECT
+            )
+            wasDone && !isDone -> deleteActivity(
+                ActivityTypes.PROJECT_COMPLETED,
+                updated.id,
+                ActivityTargetTypes.PROJECT,
+                currentDate()
+            )
+        }
+    }
+
+    private suspend fun deleteActivity(type: String, targetId: String?, targetType: String?, date: String) {
+        activityRecordDao.deleteActivity(type, targetId, targetType, date)
     }
 
     private suspend fun touchProject(projectId: String) {
@@ -909,6 +1522,19 @@ class TrailNoteRepository(
         const val TAG_SEPARATOR = "\n"
         const val ID_SEPARATOR = ","
         const val DEFAULT_RANDOM_TODAY_GOAL_COUNT = 3
+        const val MIN_RANDOM_TODAY_GOAL_COUNT = 1
+        const val MAX_RANDOM_TODAY_GOAL_COUNT = 20
         const val KEY_LAST_PROCESSED_DATE = "last_processed_date"
+        const val DEFAULT_PROFILE_NAME = "TrailNote"
+        const val DEFAULT_PROFILE_LEVEL = 1
+        const val DEFAULT_PROFILE_EXP = 0
+        const val DEFAULT_ACHIEVEMENT_ICON = "\u25A0"
+        const val INSERT_IGNORED = -1L
+        const val DEFAULT_TREND_DAYS = 30
+        const val APP_TARGET_ID = "app"
+        const val DEFAULT_GROWTH_AREA_LEVEL = 1
+        const val ROUTINE_COMPLETION_PROGRESS = 5
+        const val GROWTH_TOPIC_LEVEL_PROGRESS = 100
+        const val GROWTH_COLOR_DEBUG_TAG = "GrowthColorDebug"
     }
 }

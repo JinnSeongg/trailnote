@@ -1,5 +1,10 @@
 package com.example.trailnote.feature.growth
 
+import android.graphics.Color
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -45,15 +50,36 @@ class GrowthAreaAdapter(
             onLongClick: (GrowthArea) -> Unit,
             isSelected: (GrowthArea) -> Boolean
         ) {
-            binding.titleText.text = "${item.title}  Lv.${item.level}"
-            binding.metaText.text = "${item.description} · ${item.exp}%"
-            binding.progressBar.progress = item.exp
+            Log.d(TAG, "areaAdapter bind title=${item.title} color=${item.colorHex}")
+            binding.titleText.text = levelTitle(item.title, item.level, item.colorHex)
+            binding.metaText.text = item.description
             binding.root.setBackgroundResource(if (isSelected(item)) R.drawable.bg_card_selected else R.drawable.bg_card)
             binding.root.setOnClickListener { onClick(item) }
             binding.root.setOnLongClickListener {
                 onLongClick(item)
                 true
             }
+        }
+
+        private fun levelTitle(title: String, level: Int, colorHex: String): SpannableString {
+            val levelText = "Lv.$level"
+            val text = "$title  $levelText"
+            return SpannableString(text).apply {
+                setSpan(
+                    ForegroundColorSpan(parseColor(colorHex)),
+                    text.indexOf(levelText),
+                    text.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+
+        private fun parseColor(colorHex: String): Int {
+            return runCatching { Color.parseColor(colorHex) }.getOrDefault(Color.parseColor("#8B7CFF"))
+        }
+
+        private companion object {
+            const val TAG = "GrowthColorDebug"
         }
     }
 }

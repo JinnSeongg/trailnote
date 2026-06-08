@@ -1,6 +1,7 @@
 package com.example.trailnote.data.local.db
 
 import android.content.Context
+import com.example.trailnote.data.local.entity.AchievementEntity
 import com.example.trailnote.data.local.entity.GrowthAreaEntity
 import com.example.trailnote.data.local.entity.GrowthTopicEntity
 import com.example.trailnote.data.local.entity.LogCategoryEntity
@@ -13,7 +14,9 @@ import com.example.trailnote.data.local.entity.RoutineEntity
 import com.example.trailnote.data.local.entity.ShortTaskEntity
 import com.example.trailnote.data.sample.SampleGrowth
 import com.example.trailnote.data.sample.SampleLogs
+import com.example.trailnote.data.sample.SampleProfile
 import com.example.trailnote.data.sample.SampleProjects
+import com.example.trailnote.domain.model.GrowthColorPalette
 import java.time.LocalDate
 
 object DatabaseSeeder {
@@ -22,6 +25,7 @@ object DatabaseSeeder {
         seedProjectsIfNeeded(database)
         seedLogsIfNeeded(database)
         seedGrowthIfNeeded(database)
+        seedAchievementsIfNeeded(database)
     }
 
     private suspend fun seedProjectsIfNeeded(database: AppDatabase) {
@@ -149,6 +153,7 @@ object DatabaseSeeder {
                     description = area.description,
                     level = area.level,
                     exp = area.exp,
+                    colorHex = area.colorHex,
                     orderIndex = index + 1,
                     createdAt = now,
                     updatedAt = now
@@ -185,6 +190,28 @@ object DatabaseSeeder {
                     createdAt = now,
                     updatedAt = now,
                     lastCompletedDate = if (routine.isDoneToday) now else null
+                )
+            }
+        )
+    }
+
+    private suspend fun seedAchievementsIfNeeded(database: AppDatabase) {
+        val achievementDao = database.achievementDao()
+        val existingAchievementsById = achievementDao.getAchievements().associateBy { it.id }
+        achievementDao.insertAchievements(
+            SampleProfile.achievements.map { achievement ->
+                val existingAchievement = existingAchievementsById[achievement.id]
+                AchievementEntity(
+                    id = achievement.id,
+                    title = achievement.title,
+                    description = achievement.description,
+                    category = achievement.category,
+                    rarity = achievement.grade,
+                    iconKey = achievement.iconText,
+                    isUnlocked = existingAchievement?.isUnlocked ?: achievement.isUnlocked,
+                    unlockedAt = existingAchievement?.unlockedAt ?: achievement.unlockedAt,
+                    progress = existingAchievement?.progress ?: if (achievement.isUnlocked) 1 else 0,
+                    target = existingAchievement?.target ?: 1
                 )
             }
         )

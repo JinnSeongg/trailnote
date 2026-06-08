@@ -2,10 +2,12 @@ package com.example.trailnote.feature.growth
 
 import android.os.Bundle
 import android.text.TextWatcher
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
@@ -26,6 +28,7 @@ import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentGrowthAreaDetailBinding
 import com.example.trailnote.domain.model.GrowthArea
+import com.example.trailnote.domain.model.GrowthColorPalette
 import com.example.trailnote.domain.model.GrowthTopic
 import kotlinx.coroutines.launch
 
@@ -177,7 +180,7 @@ class GrowthAreaDetailFragment : Fragment() {
     }
 
     private fun renderTopics() {
-        growthTopicAdapter.submitList(topics)
+        growthTopicAdapter.submitList(topics, area?.colorHex ?: GrowthColorPalette.DEFAULT_COLOR)
         binding?.emptyText?.visibility = if (topics.isEmpty()) View.VISIBLE else View.GONE
         binding?.growthTopicList?.visibility = if (topics.isEmpty()) View.GONE else View.VISIBLE
     }
@@ -199,10 +202,14 @@ class GrowthAreaDetailFragment : Fragment() {
     private fun showAreaMenu() {
         val current = binding ?: return
         val anchor = current.root.findViewById<View>(R.id.headerAction)
-        PopupMenuHelper.show(requireContext(), anchor, listOf("\uC218\uC815", "\uC0AD\uC81C")) { title ->
+        PopupMenuHelper.show(requireContext(), anchor, listOf("\uC218\uC815", "\uC0C9\uC0C1", "\uC0AD\uC81C")) { title ->
             when (title) {
                 "\uC218\uC815" -> {
                     openTitleEdit()
+                    true
+                }
+                "\uC0C9\uC0C1" -> {
+                    showColorDialog()
                     true
                 }
                 "\uC0AD\uC81C" -> {
@@ -212,6 +219,30 @@ class GrowthAreaDetailFragment : Fragment() {
                 else -> false
             }
         }
+    }
+
+    private fun showColorDialog() {
+        val currentArea = area ?: return
+        GrowthAreaColorDialogFragment.newInstance(currentArea.colorHex).apply {
+            onColorSelected = { colorHex ->
+                Log.d(TAG, "dialog callback areaId=$areaId selected=$colorHex")
+                if (this@GrowthAreaDetailFragment.isAdded && binding != null) {
+                    this@GrowthAreaDetailFragment.viewLifecycleOwner.lifecycleScope.launch {
+                        runCatching {
+                            Log.d(TAG, "call repo update areaId=$areaId requested=$colorHex")
+                            repository.updateGrowthAreaColor(areaId, colorHex)
+                        }.onSuccess {
+                            if (this@GrowthAreaDetailFragment.isAdded && binding != null) reloadArea()
+                        }.onFailure { throwable ->
+                            Log.e(TAG, "Failed to update growth area color", throwable)
+                            if (this@GrowthAreaDetailFragment.isAdded) {
+                                Toast.makeText(requireContext(), "\uC0C9\uC0C1 \uBCC0\uACBD\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
+            }
+        }.show(childFragmentManager, "growth_area_color")
     }
 
     private fun openTitleEdit() {
@@ -239,6 +270,7 @@ class GrowthAreaDetailFragment : Fragment() {
                 findNavController().navigateUp()
                 return@launch
             }
+            Log.d(TAG, "areaDetail loaded areaId=$areaId color=${area?.colorHex}")
             areas = repository.getGrowthAreas()
             topics = repository.getGrowthTopicsByAreaId(areaId)
             renderArea()
@@ -288,5 +320,9 @@ class GrowthAreaDetailFragment : Fragment() {
     private enum class QuickAddMode {
         GrowthTopic,
         AreaTitle
+    }
+
+    private companion object {
+        const val TAG = "GrowthColorDebug"
     }
 }

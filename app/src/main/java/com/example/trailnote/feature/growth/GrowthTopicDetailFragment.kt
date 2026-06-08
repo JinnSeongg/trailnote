@@ -2,6 +2,7 @@ package com.example.trailnote.feature.growth
 
 import android.os.Bundle
 import android.text.TextWatcher
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +25,8 @@ import com.example.trailnote.core.util.setupTwoLineLimitedDescriptionEditText
 import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentGrowthTopicDetailBinding
+import com.example.trailnote.domain.model.GrowthArea
+import com.example.trailnote.domain.model.GrowthColorPalette
 import com.example.trailnote.domain.model.GrowthTopic
 import com.example.trailnote.domain.model.Routine
 import kotlinx.coroutines.launch
@@ -37,6 +40,7 @@ class GrowthTopicDetailFragment : Fragment() {
     private var quickAddMode: QuickAddMode = QuickAddMode.Routine
     private var routineDragSelectionHelper: RecyclerDragSelectionHelper? = null
     private var topic: GrowthTopic? = null
+    private var area: GrowthArea? = null
     private var topics: List<GrowthTopic> = emptyList()
     private var routines: List<Routine> = emptyList()
     private val selectionStateListener: (SelectionState) -> Unit = {
@@ -182,7 +186,7 @@ class GrowthTopicDetailFragment : Fragment() {
     }
 
     private fun renderRoutines() {
-        routineAdapter.submitList(routines)
+        routineAdapter.submitList(routines, area?.colorHex ?: GrowthColorPalette.DEFAULT_COLOR)
         binding?.emptyText?.visibility = if (routines.isEmpty()) View.VISIBLE else View.GONE
         binding?.routineList?.visibility = if (routines.isEmpty()) View.GONE else View.VISIBLE
     }
@@ -244,6 +248,8 @@ class GrowthTopicDetailFragment : Fragment() {
                 findNavController().navigateUp()
                 return@launch
             }
+            area = repository.getGrowthAreaById(growthAreaId)
+            Log.d(TAG, "topicDetail loaded areaId=$growthAreaId color=${area?.colorHex}")
             topics = repository.getGrowthTopicsByAreaId(growthAreaId)
             routines = repository.getRoutinesByTopicId(topicId)
             renderTopic()
@@ -293,5 +299,9 @@ class GrowthTopicDetailFragment : Fragment() {
     private enum class QuickAddMode {
         Routine,
         TopicTitle
+    }
+
+    private companion object {
+        const val TAG = "GrowthColorDebug"
     }
 }

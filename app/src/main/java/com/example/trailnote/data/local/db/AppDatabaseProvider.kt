@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.trailnote.domain.model.GrowthColorPalette
 
 object AppDatabaseProvider {
     @Volatile
@@ -16,7 +17,7 @@ object AppDatabaseProvider {
                 AppDatabase::class.java,
                 AppDatabase.DATABASE_NAME
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
                 .also { database = it }
         }
@@ -109,6 +110,36 @@ object AppDatabaseProvider {
                     PRIMARY KEY(`id`)
                 )
                 """.trimIndent()
+            )
+        }
+    }
+
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `routine_completion_records` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `routineId` TEXT NOT NULL,
+                    `date` TEXT NOT NULL,
+                    `completedAt` TEXT NOT NULL,
+                    FOREIGN KEY(`routineId`) REFERENCES `routines`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_routine_completion_records_routineId` ON `routine_completion_records` (`routineId`)"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_routine_completion_records_routineId_date` ON `routine_completion_records` (`routineId`, `date`)"
+            )
+        }
+    }
+
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `growth_areas` ADD COLUMN `colorHex` TEXT NOT NULL DEFAULT '${GrowthColorPalette.DEFAULT_COLOR}'"
             )
         }
     }

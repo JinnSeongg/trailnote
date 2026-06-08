@@ -1,6 +1,7 @@
 package com.example.trailnote.feature.home
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,6 +16,9 @@ import com.example.trailnote.data.local.db.DatabaseSeeder
 import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentHomeBinding
 import com.example.trailnote.databinding.ItemStatCardBinding
+import com.example.trailnote.domain.model.GrowthArea
+import com.example.trailnote.domain.model.GrowthColorPalette
+import com.example.trailnote.domain.model.GrowthTopic
 import com.example.trailnote.domain.model.Routine
 import com.example.trailnote.domain.model.Task
 import kotlinx.coroutines.launch
@@ -28,6 +32,8 @@ class HomeFragment : Fragment() {
     private var todayWorks: List<Task> = emptyList()
     private var fixedRoutines: List<Routine> = emptyList()
     private var todayRoutines: List<Routine> = emptyList()
+    private var growthAreas: List<GrowthArea> = emptyList()
+    private var growthTopics: List<GrowthTopic> = emptyList()
     private val todayDate: String
         get() = LocalDate.now().toString()
 
@@ -102,15 +108,27 @@ class HomeFragment : Fragment() {
                 isEnabled = false
             }
         }.also { callback ->
-            current.todayWorkQuickAdd.root.addOnLayoutChangeListener { quickAdd, _, _, _, _, _, _, _, _ ->
+        current.todayWorkQuickAdd.root.addOnLayoutChangeListener { quickAdd, _, _, _, _, _, _, _, _ ->
                 callback.isEnabled = InlineQuickAdd.isVisible(quickAdd)
             }
         })
+        requireActivity().supportFragmentManager.setFragmentResultListener(
+            REQUEST_TODAY_GOAL_COUNT_CHANGED,
+            viewLifecycleOwner
+        ) { _, _ ->
+            reloadHome()
+        }
         reloadHome()
     }
 
     override fun onResume() {
         super.onResume()
+        if (binding != null && ::todayWorkAdapter.isInitialized) {
+            reloadHome()
+        }
+    }
+
+    fun refreshHomeGoals() {
         if (binding != null && ::todayWorkAdapter.isInitialized) {
             reloadHome()
         }
@@ -124,14 +142,16 @@ class HomeFragment : Fragment() {
             todayWorks = repository.getTodayHomeTasks(date)
             fixedRoutines = repository.getFixedRoutinesForHome()
             todayRoutines = repository.getTodayRandomRoutines(date)
+            growthAreas = repository.getGrowthAreas()
+            growthTopics = repository.getGrowthTopics()
             renderHome()
         }
     }
 
     private fun renderHome() {
         val current = binding ?: return
-        val fixedGoals = fixedRoutines.map { it.toTask() }
-        val todayGoals = todayRoutines.map { it.toTask() }
+        val fixedGoals = fixedRoutines.toGoalItems()
+        val todayGoals = todayRoutines.toGoalItems()
         todayWorkAdapter.submitList(todayWorks)
         fixedGoalAdapter.submitList(fixedGoals)
         todayGoalAdapter.submitList(todayGoals)
@@ -151,8 +171,28 @@ class HomeFragment : Fragment() {
         super.onDestroyView()
     }
 
-    private fun Routine.toTask(): Task = Task(id, title, isDoneToday)
+    private fun List<Routine>.toGoalItems(): List<HomeGoalItem> {
+        val topicsById = growthTopics.associateBy { it.id }
+        val areasById = growthAreas.associateBy { it.id }
+        return map { routine ->
+            val colorHex = topicsById[routine.growthTopicId]
+                ?.let { topic -> areasById[topic.growthAreaId]?.colorHex }
+                ?: GrowthColorPalette.DEFAULT_COLOR
+            Log.d(TAG, "home routine color title=${routine.title} color=$colorHex")
+            HomeGoalItem(
+                id = routine.id,
+                title = routine.title,
+                isDone = routine.isDoneToday,
+                colorHex = colorHex
+            )
+        }
+    }
 
     private val repository
         get() = RepositoryProvider.getRepository(requireContext())
+
+    companion object {
+        const val REQUEST_TODAY_GOAL_COUNT_CHANGED = "today_goal_count_changed"
+        private const val TAG = "GrowthColorDebug"
+    }
 }

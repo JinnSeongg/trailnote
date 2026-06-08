@@ -10,6 +10,7 @@ data class GrowthAreaEntity(
     val description: String,
     val level: Int,
     val exp: Int,
+    val colorHex: String,
     val orderIndex: Int,
     val createdAt: String,
     val updatedAt: String

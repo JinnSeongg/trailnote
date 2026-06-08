@@ -15,7 +15,10 @@ import androidx.navigation.fragment.NavHostFragment
 import com.example.trailnote.core.selection.SelectionController
 import com.example.trailnote.core.selection.SelectionState
 import com.example.trailnote.data.local.db.DatabaseSeeder
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.ActivityMainBinding
+import com.example.trailnote.feature.home.HomeFragment
+import com.example.trailnote.feature.home.TodayGoalCountDialogFragment
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -35,6 +38,9 @@ class MainActivity : AppCompatActivity() {
         }
         lifecycleScope.launch {
             DatabaseSeeder.seedIfNeeded(applicationContext)
+            val repository = RepositoryProvider.getRepository(applicationContext)
+            repository.recordAppVisitIfNeeded()
+            showAchievementUnlockFeedback(repository.refreshAchievementUnlocks().newlyUnlockedAchievements)
         }
 
         val navHostFragment = supportFragmentManager
@@ -107,12 +113,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupDrawerMenu() {
-        bindDrawerItem(R.id.todayGoalCountMenu, "오늘 목표 수 설정 준비 중")
-        bindDrawerItem(R.id.themeMenu, "테마 변경 준비 중")
-        bindDrawerItem(R.id.notificationMenu, "알림 준비 중")
-        bindDrawerItem(R.id.dataMenu, "데이터 준비 중")
-        bindDrawerItem(R.id.helpMenu, "도움말 준비 중")
-        bindDrawerItem(R.id.aboutMenu, "정보 준비 중")
+        binding.root.findViewById<TextView>(R.id.todayGoalCountMenu).setOnClickListener {
+            binding.drawerLayout.closeDrawer(Gravity.LEFT)
+            showTodayGoalCountDialog()
+        }
+        bindDrawerItem(R.id.themeMenu, "\uD14C\uB9C8 \uBCC0\uACBD \uC900\uBE44 \uC911")
+        bindDrawerItem(R.id.notificationMenu, "\uC54C\uB9BC \uC900\uBE44 \uC911")
+        bindDrawerItem(R.id.dataMenu, "\uB370\uC774\uD130 \uC900\uBE44 \uC911")
+        bindDrawerItem(R.id.helpMenu, "\uB3C4\uC6C0\uB9D0 \uC900\uBE44 \uC911")
+        bindDrawerItem(R.id.aboutMenu, "\uC815\uBCF4 \uC900\uBE44 \uC911")
     }
 
     private fun bindDrawerItem(viewId: Int, message: String) {
@@ -120,6 +129,36 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             binding.drawerLayout.closeDrawer(Gravity.LEFT)
         }
+    }
+
+    private fun showTodayGoalCountDialog() {
+        lifecycleScope.launch {
+            val repository = RepositoryProvider.getRepository(applicationContext)
+            val currentCount = repository.getHomeGoalSettings().randomTodayGoalCount
+            TodayGoalCountDialogFragment.newInstance(currentCount).apply {
+                onSave = { count ->
+                    lifecycleScope.launch {
+                        repository.updateRandomTodayGoalCount(count)
+                        supportFragmentManager.setFragmentResult(HomeFragment.REQUEST_TODAY_GOAL_COUNT_CHANGED, Bundle.EMPTY)
+                        currentHomeFragment()?.refreshHomeGoals()
+                    }
+                }
+            }.show(supportFragmentManager, "today_goal_count")
+        }
+    }
+
+    private fun currentHomeFragment(): HomeFragment? {
+        val navHost = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
+        return navHost?.childFragmentManager?.primaryNavigationFragment as? HomeFragment
+    }
+    private fun showAchievementUnlockFeedback(achievements: List<com.example.trailnote.domain.model.Achievement>) {
+        if (achievements.isEmpty()) return
+        val message = if (achievements.size == 1) {
+            "\uC5C5\uC801 \uB2EC\uC131: ${achievements.first().title}"
+        } else {
+            "\uC5C5\uC801 ${achievements.size}\uAC1C \uB2EC\uC131"
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun renderSelectionState(state: SelectionState) {

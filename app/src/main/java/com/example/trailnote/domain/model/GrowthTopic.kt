@@ -8,4 +8,7 @@ data class GrowthTopic(
     val level: Int,
     val exp: Int,
     val order: Int
-)
+) {
+    val progressPercent: Int
+        get() = exp
+}

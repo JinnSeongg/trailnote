@@ -3,7 +3,9 @@ package com.example.trailnote.feature.profile
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.example.trailnote.R
 import com.example.trailnote.databinding.ItemAchievementFullBinding
 import com.example.trailnote.databinding.ItemAchievementSectionHeaderBinding
 import com.example.trailnote.domain.model.Achievement
@@ -66,9 +68,22 @@ class AchievementListAdapter(
         fun bind(achievement: Achievement, isRepresentative: Boolean) {
             binding.iconText.text = achievement.iconText
             binding.titleText.text = achievement.title
-            binding.gradeText.text = achievement.grade
+            binding.descriptionText.text = achievement.description
+            bindGrade(achievement.grade)
             binding.representativeText.visibility = if (isRepresentative) View.VISIBLE else View.GONE
             binding.root.setOnClickListener { onAchievementClick(achievement) }
+        }
+
+        private fun bindGrade(grade: String) {
+            val context = binding.root.context
+            val (backgroundRes, textColorRes) = when (grade) {
+                "\uD76C\uADC0" -> R.drawable.bg_achievement_grade_rare to R.color.achievement_grade_rare_text
+                "\uC720\uB2C8\uD06C" -> R.drawable.bg_achievement_grade_unique to R.color.achievement_grade_unique_text
+                else -> R.drawable.bg_achievement_grade_common to R.color.achievement_grade_common_text
+            }
+            binding.gradeText.text = grade
+            binding.gradeText.setBackgroundResource(backgroundRes)
+            binding.gradeText.setTextColor(ContextCompat.getColor(context, textColorRes))
         }
     }
 

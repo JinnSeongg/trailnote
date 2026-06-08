@@ -5,15 +5,18 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.trailnote.R
 import com.example.trailnote.core.util.setHeader
-import com.example.trailnote.data.InMemoryDataStore
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.FragmentAchievementListBinding
 import com.example.trailnote.domain.model.Achievement
+import kotlinx.coroutines.launch
 
 class AchievementListFragment : Fragment() {
     private var binding: FragmentAchievementListBinding? = null
@@ -84,13 +87,30 @@ class AchievementListFragment : Fragment() {
     }
 
     private fun renderAchievements() {
-        val achievements = InMemoryDataStore.getAchievements()
-            .filter { achievement -> selectedGrade == null || achievement.grade == selectedGrade }
-        adapter.submitList(toSectionItems(achievements))
+        viewLifecycleOwner.lifecycleScope.launch {
+            val unlockResult = repository.refreshAchievementUnlocks()
+            val achievements = repository.getUnlockedAchievementsForDisplay(unlockResult.achievements)
+                .filter { achievement -> selectedGrade == null || achievement.grade == selectedGrade }
+            val representativeAchievementId = repository.getProfileSummaryFromDb().featuredAchievementId
+            adapter.submitList(toSectionItems(achievements, representativeAchievementId))
+            showAchievementUnlockFeedback(unlockResult.newlyUnlockedAchievements)
+        }
     }
 
-    private fun toSectionItems(achievements: List<Achievement>): List<AchievementListItem> {
-        val representativeAchievementId = InMemoryDataStore.getProfileSummary().featuredAchievementId
+    private fun showAchievementUnlockFeedback(achievements: List<Achievement>) {
+        if (achievements.isEmpty()) return
+        val message = if (achievements.size == 1) {
+            "\uC5C5\uC801 \uB2EC\uC131: ${achievements.first().title}"
+        } else {
+            "\uC5C5\uC801 ${achievements.size}\uAC1C \uB2EC\uC131"
+        }
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun toSectionItems(
+        achievements: List<Achievement>,
+        representativeAchievementId: String?
+    ): List<AchievementListItem> {
         return achievements
             .groupBy { it.category }
             .flatMap { (category, categoryAchievements) ->
@@ -108,4 +128,7 @@ class AchievementListFragment : Fragment() {
         binding = null
         super.onDestroyView()
     }
+
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
 }

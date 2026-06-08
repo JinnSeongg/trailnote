@@ -25,4 +25,10 @@
     <color name="profile_chart_line">#FFA99BFF</color>
     <color name="profile_success">#FFFFB5B5</color>
     <color name="profile_down">#FF8D79FF</color>
+    <color name="achievement_grade_common_bg">#FFDCEBFF</color>
+    <color name="achievement_grade_common_text">#FF174A8B</color>
+    <color name="achievement_grade_rare_bg">#FFE9DDFE</color>
+    <color name="achievement_grade_rare_text">#FF5E3BA6</color>
+    <color name="achievement_grade_unique_bg">#FFFFF0B8</color>
+    <color name="achievement_grade_unique_text">#FF6B4B00</color>
 </resources>

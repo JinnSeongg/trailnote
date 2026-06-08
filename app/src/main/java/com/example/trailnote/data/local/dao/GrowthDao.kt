@@ -8,6 +8,7 @@ import androidx.room.Query
 import androidx.room.Update
 import com.example.trailnote.data.local.entity.GrowthAreaEntity
 import com.example.trailnote.data.local.entity.GrowthTopicEntity
+import com.example.trailnote.data.local.entity.RoutineCompletionRecordEntity
 import com.example.trailnote.data.local.entity.RoutineEntity
 
 @Dao
@@ -45,6 +46,21 @@ interface GrowthDao {
     @Query("SELECT * FROM routines WHERE id IN (:ids)")
     suspend fun getRoutinesByIds(ids: Collection<String>): List<RoutineEntity>
 
+    @Query("SELECT * FROM routine_completion_records ORDER BY date DESC, completedAt DESC")
+    suspend fun getRoutineCompletions(): List<RoutineCompletionRecordEntity>
+
+    @Query("SELECT * FROM routine_completion_records WHERE date BETWEEN :startDate AND :endDate ORDER BY date DESC, completedAt DESC")
+    suspend fun getRoutineCompletionsBetween(startDate: String, endDate: String): List<RoutineCompletionRecordEntity>
+
+    @Query("SELECT COUNT(*) FROM routine_completion_records")
+    suspend fun countRoutineCompletions(): Int
+
+    @Query("SELECT COUNT(*) FROM routine_completion_records WHERE routineId = :routineId")
+    suspend fun countRoutineCompletionsByRoutineId(routineId: String): Int
+
+    @Query("SELECT MAX(date) FROM routine_completion_records WHERE routineId = :routineId")
+    suspend fun getLatestRoutineCompletionDate(routineId: String): String?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGrowthArea(area: GrowthAreaEntity)
 
@@ -62,6 +78,9 @@ interface GrowthDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRoutines(routines: List<RoutineEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertRoutineCompletionIfAbsent(record: RoutineCompletionRecordEntity): Long
 
     @Update
     suspend fun updateGrowthArea(area: GrowthAreaEntity)
@@ -96,9 +115,15 @@ interface GrowthDao {
     @Query("UPDATE growth_topics SET growthAreaId = :growthAreaId, updatedAt = :updatedAt WHERE id IN (:topicIds)")
     suspend fun moveGrowthTopicsToArea(topicIds: Collection<String>, growthAreaId: String, updatedAt: String)
 
+    @Query("UPDATE growth_areas SET colorHex = :colorHex, updatedAt = :updatedAt WHERE id = :areaId")
+    suspend fun updateGrowthAreaColor(areaId: String, colorHex: String, updatedAt: String): Int
+
     @Query("UPDATE routines SET growthTopicId = :growthTopicId, updatedAt = :updatedAt WHERE id IN (:routineIds)")
     suspend fun moveRoutinesToTopic(routineIds: Collection<String>, growthTopicId: String, updatedAt: String)
 
     @Query("UPDATE routines SET isDoneToday = 0, lastCompletedDate = NULL, updatedAt = :updatedAt")
     suspend fun resetAllRoutineDoneState(updatedAt: String)
+
+    @Query("DELETE FROM routine_completion_records WHERE routineId = :routineId AND date = :date")
+    suspend fun deleteRoutineCompletion(routineId: String, date: String)
 }

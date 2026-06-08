@@ -36,6 +36,16 @@
         android:textSize="11sp" />
 
     <TextView
+        android:id="@+id/descriptionText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:lineSpacingExtra="2dp"
+        android:textColor="@color/trail_text_secondary"
+        android:textSize="13sp" />
+
+    <TextView
         android:id="@+id/unlockedAtText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

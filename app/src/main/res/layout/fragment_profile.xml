@@ -136,9 +136,10 @@
                 android:text="&#54876;&#46041; &#53685;&#44228;" />
 
             <TextView
+                android:id="@+id/statsPeriodButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="@drawable/bg_profile_small_button"
+                android:background="@drawable/bg_chip_unselected"
                 android:text="&#51060;&#48264; &#45804;"
                 android:textColor="@color/trail_text_secondary"
                 android:textSize="11sp" />
@@ -204,9 +205,20 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/achievementList"
             android:layout_width="match_parent"
-            android:layout_height="92dp"
+            android:layout_height="104dp"
             android:layout_marginTop="10dp"
             android:nestedScrollingEnabled="false"
             android:overScrollMode="never" />
+
+        <TextView
+            android:id="@+id/achievementEmptyText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="start"
+            android:text="&#50500;&#51649; &#54925;&#46301;&#54620; &#50629;&#51201;&#51060; &#50630;&#49845;&#45768;&#45796;"
+            android:textColor="@color/trail_text_secondary"
+            android:textSize="12sp"
+            android:visibility="gone" />
     </LinearLayout>
 </ScrollView>

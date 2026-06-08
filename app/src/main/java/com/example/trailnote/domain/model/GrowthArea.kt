@@ -5,5 +5,6 @@ data class GrowthArea(
     val title: String,
     val description: String,
     val level: Int,
-    val exp: Int
+    val exp: Int,
+    val colorHex: String = GrowthColorPalette.DEFAULT_COLOR
 )

@@ -8,11 +8,14 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.setFragmentResult
-import com.example.trailnote.data.InMemoryDataStore
+import androidx.lifecycle.lifecycleScope
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.AchievementDetailDialogBinding
+import kotlinx.coroutines.launch
 
 class AchievementDetailDialogFragment : DialogFragment() {
     private var binding: AchievementDetailDialogBinding? = null
+    private var achievementId: String = ""
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         return Dialog(requireContext()).apply {
@@ -28,37 +31,45 @@ class AchievementDetailDialogFragment : DialogFragment() {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        val achievementId = requireArguments().getString(ARG_ACHIEVEMENT_ID).orEmpty()
-        val achievement = InMemoryDataStore.getAchievements().firstOrNull { it.id == achievementId }
         val current = binding ?: return
-        if (achievement == null) {
-            dismiss()
-            return
-        }
+        achievementId = requireArguments().getString(ARG_ACHIEVEMENT_ID).orEmpty()
 
-        current.iconText.text = achievement.iconText
-        current.titleText.text = achievement.title
-        current.gradeText.text = achievement.grade
-        current.unlockedAtText.text = achievement.unlockedAt ?: "\uBBF8\uD68D\uB4DD"
-        renderRepresentativeButton(achievement.id)
-        current.representativeButton.setOnClickListener {
-            if (InMemoryDataStore.getProfileSummary().featuredAchievementId != achievement.id) {
-                InMemoryDataStore.updateFeaturedAchievement(achievement.id)
-                renderRepresentativeButton(achievement.id)
-                setFragmentResult(REQUEST_KEY, Bundle.EMPTY)
-                Toast.makeText(requireContext(), "\uB300\uD45C \uC5C5\uC801\uC73C\uB85C \uC124\uC815\uD588\uC5B4\uC694", Toast.LENGTH_SHORT).show()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val achievement = repository.getAchievementById(achievementId)
+            if (achievement == null) {
+                dismiss()
+                return@launch
             }
+
+            current.iconText.text = achievement.iconText
+            current.titleText.text = achievement.title
+            current.gradeText.text = achievement.grade
+            current.descriptionText.text = achievement.description
+            current.unlockedAtText.text = achievement.unlockedAt ?: "\uBBF8\uD68D\uB4DD"
+            renderRepresentativeButton()
+            current.representativeButton.setOnClickListener {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    if (repository.getProfileSummaryFromDb().featuredAchievementId != achievement.id) {
+                        repository.updateRepresentativeAchievement(achievement.id)
+                        renderRepresentativeButton()
+                        setFragmentResult(REQUEST_KEY, Bundle.EMPTY)
+                        Toast.makeText(requireContext(), "\uB300\uD45C \uC5C5\uC801\uC73C\uB85C \uC124\uC815\uD588\uC5B4\uC694", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            current.closeButton.setOnClickListener { dismiss() }
         }
-        current.closeButton.setOnClickListener { dismiss() }
     }
 
-    private fun renderRepresentativeButton(achievementId: String) {
+    private fun renderRepresentativeButton() {
         val current = binding ?: return
-        val isRepresentative = InMemoryDataStore.getProfileSummary().featuredAchievementId == achievementId
-        current.representativeButton.text = if (isRepresentative) {
-            "\uB300\uD45C \uC5C5\uC801"
-        } else {
-            "\uB300\uD45C \uC5C5\uC801\uC73C\uB85C \uC124\uC815"
+        viewLifecycleOwner.lifecycleScope.launch {
+            val isRepresentative = repository.getProfileSummaryFromDb().featuredAchievementId == achievementId
+            current.representativeButton.text = if (isRepresentative) {
+                "\uB300\uD45C \uC5C5\uC801"
+            } else {
+                "\uB300\uD45C \uC5C5\uC801\uC73C\uB85C \uC124\uC815"
+            }
         }
     }
 
@@ -88,4 +99,7 @@ class AchievementDetailDialogFragment : DialogFragment() {
             }
         }
     }
+
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
 }
