@@ -1102,20 +1102,42 @@ class TrailNoteRepository(
         )
     }
 
+    suspend fun updateUserProfileName(name: String) {
+        val normalizedName = name.trim()
+        val now = currentDate()
+        val current = profileDao.getUserProfile()
+        val updatedProfile = current?.copy(
+            name = normalizedName.ifBlank { current.name },
+            updatedAt = now
+        ) ?: UserProfileEntity(
+            name = normalizedName.ifBlank { DEFAULT_PROFILE_NAME },
+            level = DEFAULT_PROFILE_LEVEL,
+            exp = DEFAULT_PROFILE_EXP,
+            representativeAchievementId = null,
+            createdAt = now,
+            updatedAt = now
+        )
+        profileDao.insertUserProfile(updatedProfile)
+    }
+
     suspend fun getAchievementsFromDb(): List<Achievement> {
         val achievements = achievementDao.getAchievements().map { it.toDomain() }
-        return achievements.ifEmpty { SampleProfile.achievements }
+        return achievements
+            .filterNot { achievement -> isRetiredAchievementId(achievement.id) }
+            .ifEmpty { activeFixedAchievementDefinitions() }
     }
 
     suspend fun refreshAchievementUnlocks(): AchievementUnlockResult {
         val fixedAchievements = ensureAchievementDefinitions()
         val existingAchievements = achievementDao.getAchievements().map { it.toDomain() }
+        val stats = getAchievementStats()
         val personalAchievements = generatePersonalProjectCompletionAchievements(existingAchievements) +
-            generatePersonalRoutineCompletionAchievements(existingAchievements)
+            generatePersonalRoutineCompletionAchievements(existingAchievements) +
+            generatePersonalLogCategoryAchievements(stats, existingAchievements) +
+            generatePersonalGrowthTopicLevelAchievements(existingAchievements)
         if (personalAchievements.isNotEmpty()) {
             achievementDao.insertAchievements(personalAchievements.map { it.toEntity() })
         }
-        val stats = getAchievementStats()
         val evaluatedAchievements = achievementEvaluator.evaluate(
             stats = stats,
             achievements = fixedAchievements,
@@ -1128,20 +1150,18 @@ class TrailNoteRepository(
         if (newlyUnlockedAchievements.isNotEmpty()) {
             achievementDao.insertAchievements(newlyUnlockedAchievements.map { it.toEntity() })
         }
-        val existingPersonalAchievements = existingAchievements
-            .filter { personalAchievementGenerator.isPersonalAchievement(it.id) }
-            .filterNot { existing -> personalAchievements.any { generated -> generated.id == existing.id } }
+        removeStaleAchievements((evaluatedAchievements + personalAchievements).map { it.id }.toSet())
         return AchievementUnlockResult(
-            achievements = evaluatedAchievements + personalAchievements + existingPersonalAchievements,
+            achievements = evaluatedAchievements + personalAchievements,
             newlyUnlockedAchievements = newlyUnlockedAchievements + personalAchievements.filter { generated ->
-                existingAchievements.none { existing -> existing.id == generated.id }
+                existingAchievements.none { existing -> existing.id == generated.id && existing.isUnlocked }
             }
         )
     }
 
     private suspend fun ensureAchievementDefinitions(): List<Achievement> {
         val achievementsById = achievementDao.getAchievements().map { it.toDomain() }.associateBy { it.id }
-        val syncedAchievements = SampleProfile.achievements.map { definition ->
+        val syncedAchievements = activeFixedAchievementDefinitions().map { definition ->
             val existing = achievementsById[definition.id]
             definition.copy(
                 isUnlocked = existing?.isUnlocked ?: definition.isUnlocked,
@@ -1177,6 +1197,47 @@ class TrailNoteRepository(
             existingAchievements = existingAchievements,
             unlockedAt = currentDate()
         )
+    }
+
+    private suspend fun generatePersonalLogCategoryAchievements(
+        stats: AchievementStats,
+        existingAchievements: List<Achievement>
+    ): List<Achievement> {
+        return personalAchievementGenerator.generateLogCategoryAchievements(
+            categories = logDao.getLogCategories().map { it.toDomain() },
+            logCountByCategory = stats.logCountByCategory,
+            existingAchievements = existingAchievements,
+            unlockedAt = currentDate()
+        )
+    }
+
+    private suspend fun generatePersonalGrowthTopicLevelAchievements(
+        existingAchievements: List<Achievement>
+    ): List<Achievement> {
+        return personalAchievementGenerator.generateGrowthTopicLevelAchievements(
+            topics = growthDao.getGrowthTopics().map { it.toDomain() },
+            existingAchievements = existingAchievements,
+            unlockedAt = currentDate()
+        )
+    }
+
+    private suspend fun removeStaleAchievements(validAchievementIds: Set<String>) {
+        val staleIds = achievementDao.getAchievements()
+            .map { it.id }
+            .filter { id -> id !in validAchievementIds || isRetiredAchievementId(id) }
+        if (staleIds.isNotEmpty()) {
+            achievementDao.deleteAchievementsByIds(staleIds)
+        }
+    }
+
+    private fun activeFixedAchievementDefinitions(): List<Achievement> {
+        return SampleProfile.achievements.filterNot { achievement -> isRetiredAchievementId(achievement.id) }
+    }
+
+    private fun isRetiredAchievementId(id: String): Boolean {
+        return RETIRED_ACHIEVEMENT_IDS.contains(id) ||
+            RETIRED_ACHIEVEMENT_PREFIXES.any { prefix -> id.startsWith(prefix) } ||
+            personalAchievementGenerator.isRetiredPersonalAchievement(id)
     }
 
     suspend fun getUnlockedAchievementsForDisplay(limit: Int? = null): List<Achievement> {
@@ -1536,5 +1597,28 @@ class TrailNoteRepository(
         const val ROUTINE_COMPLETION_PROGRESS = 5
         const val GROWTH_TOPIC_LEVEL_PROGRESS = 100
         const val GROWTH_COLOR_DEBUG_TAG = "GrowthColorDebug"
+        val RETIRED_ACHIEVEMENT_IDS = setOf(
+            "fixed-routine-1",
+            "fixed-routine-3",
+            "fixed-routine-5",
+            "fixed-routine-10",
+            "fixed-routine-20",
+            "growth-area-1",
+            "growth-area-3",
+            "growth-area-5",
+            "growth-area-10",
+            "growth-topic-1",
+            "growth-topic-5",
+            "growth-topic-10",
+            "growth-topic-20",
+            "growth-topic-50"
+        )
+        val RETIRED_ACHIEVEMENT_PREFIXES = listOf(
+            "log-memo-",
+            "log-idea-",
+            "log-resource-",
+            "log-review-",
+            "achieve-"
+        )
     }
 }

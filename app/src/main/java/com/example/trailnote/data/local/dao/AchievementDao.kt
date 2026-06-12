@@ -30,4 +30,7 @@ interface AchievementDao {
 
     @Query("DELETE FROM achievements WHERE id = :id")
     suspend fun deleteAchievementById(id: String)
+
+    @Query("DELETE FROM achievements WHERE id IN (:ids)")
+    suspend fun deleteAchievementsByIds(ids: Collection<String>)
 }

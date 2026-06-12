@@ -32,7 +32,7 @@ class ProfileFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val current = binding ?: return
-        current.root.setHeader("\uD504\uB85C\uD544", action = "\u00B7\u00B7\u00B7")
+        current.root.setHeader("\uD504\uB85C\uD544")
         childFragmentManager.setFragmentResultListener(ProfileEditDialogFragment.REQUEST_KEY, viewLifecycleOwner) { _, _ ->
             loadProfile()
         }
@@ -124,7 +124,7 @@ class ProfileFragment : Fragment() {
             ?: achievements.firstOrNull { it.isUnlocked }
             ?: achievements.firstOrNull()
 
-        current.avatarText.text = if (summary.avatarVariant == 0) "\u25CF" else "\u25C6"
+        current.avatarImage.setImageResource(R.drawable.ic_default_profile)
         current.userNameText.text = summary.name
         current.levelBadgeText.text = "Lv.${summary.level}"
         current.expBadgeText.text = featuredAchievement?.title ?: "\uB300\uD45C \uC5C5\uC801 \uC5C6\uC74C"

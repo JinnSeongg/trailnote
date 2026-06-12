@@ -4,15 +4,14 @@ import com.example.trailnote.domain.model.HomeGoalSettings
 import com.example.trailnote.domain.model.Task
 
 object SampleHome {
-    const val todayLabel = "2026년 5월 21일 목요일"
+    const val todayLabel = "오늘"
 
-    val goalSettings = HomeGoalSettings(randomTodayGoalCount = 4)
+    val goalSettings = HomeGoalSettings(randomTodayGoalCount = 3)
 
     val todayWorks = listOf(
-        Task("work-1", "우선순위 제거", true),
-        Task("work-2", "보조 백로그 정리", true),
-        Task("work-3", "식빵", false),
-        Task("work-4", "영상추", false)
+        Task("sample-home-task-1", "오늘 계획 3분 정리하기", false),
+        Task("sample-home-task-2", "책상 위 정리하기", false),
+        Task("sample-home-task-3", "읽을 글 하나 저장하기", false)
     )
 
     val fixedGoals = SampleGrowth.routines

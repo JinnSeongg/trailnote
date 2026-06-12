@@ -13,16 +13,17 @@
         android:text="&#54532;&#47196;&#54596; &#54200;&#51665;"
         android:textSize="17sp" />
 
-    <TextView
-        android:id="@+id/avatarPreviewText"
+    <ImageView
+        android:id="@+id/avatarPreviewImage"
         android:layout_width="64dp"
         android:layout_height="64dp"
         android:layout_gravity="center_horizontal"
         android:layout_marginTop="18dp"
         android:background="@drawable/bg_profile_avatar"
-        android:gravity="center"
-        android:textColor="@color/trail_ink"
-        android:textSize="30sp" />
+        android:contentDescription="@string/profile"
+        android:padding="13dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_default_profile" />
 
     <EditText
         android:id="@+id/nameEditText"

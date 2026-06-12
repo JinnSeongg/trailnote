@@ -48,6 +48,9 @@ interface HomeDao {
     suspend fun insertHomeTask(task: HomeTaskEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHomeTasks(tasks: List<HomeTaskEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHomeGoalSettings(settings: HomeGoalSettingsEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

@@ -1,9 +1,11 @@
 package com.example.trailnote.data.local.db
 
 import android.content.Context
-import com.example.trailnote.data.local.entity.AchievementEntity
+import com.example.trailnote.data.local.entity.AppPreferenceEntity
 import com.example.trailnote.data.local.entity.GrowthAreaEntity
 import com.example.trailnote.data.local.entity.GrowthTopicEntity
+import com.example.trailnote.data.local.entity.HomeGoalSettingsEntity
+import com.example.trailnote.data.local.entity.HomeTaskEntity
 import com.example.trailnote.data.local.entity.LogCategoryEntity
 import com.example.trailnote.data.local.entity.LogEntryEntity
 import com.example.trailnote.data.local.entity.LogTopicEntity
@@ -12,20 +14,53 @@ import com.example.trailnote.data.local.entity.ProjectCategoryEntity
 import com.example.trailnote.data.local.entity.ProjectEntity
 import com.example.trailnote.data.local.entity.RoutineEntity
 import com.example.trailnote.data.local.entity.ShortTaskEntity
+import com.example.trailnote.data.local.entity.UserProfileEntity
 import com.example.trailnote.data.sample.SampleGrowth
+import com.example.trailnote.data.sample.SampleHome
 import com.example.trailnote.data.sample.SampleLogs
-import com.example.trailnote.data.sample.SampleProfile
 import com.example.trailnote.data.sample.SampleProjects
-import com.example.trailnote.domain.model.GrowthColorPalette
 import java.time.LocalDate
 
 object DatabaseSeeder {
     suspend fun seedIfNeeded(context: Context) {
         val database = AppDatabaseProvider.getDatabase(context)
+        val homeDao = database.homeDao()
+        if (homeDao.getPreference(KEY_SEED_VERSION)?.value == CURRENT_SEED_VERSION) return
+
+        seedHomeIfNeeded(database)
         seedProjectsIfNeeded(database)
         seedLogsIfNeeded(database)
         seedGrowthIfNeeded(database)
-        seedAchievementsIfNeeded(database)
+        seedProfileIfNeeded(database)
+        homeDao.setPreference(AppPreferenceEntity(KEY_SEED_VERSION, CURRENT_SEED_VERSION))
+    }
+
+    private suspend fun seedHomeIfNeeded(database: AppDatabase) {
+        val homeDao = database.homeDao()
+        val today = LocalDate.now().toString()
+        val now = today
+
+        if (homeDao.getHomeGoalSettings() == null) {
+            homeDao.insertOrUpdateHomeGoalSettings(
+                HomeGoalSettingsEntity(randomTodayGoalCount = SampleHome.goalSettings.randomTodayGoalCount.coerceIn(1, 20))
+            )
+        }
+
+        if (homeDao.getHomeTasksByDate(today).isEmpty()) {
+            homeDao.insertHomeTasks(
+                SampleHome.todayWorks.mapIndexed { index, task ->
+                    HomeTaskEntity(
+                        id = task.id,
+                        title = task.title,
+                        isDone = task.isDone,
+                        date = today,
+                        createdAt = now,
+                        completedAt = if (task.isDone) now else null,
+                        orderIndex = index + 1
+                    )
+                }
+            )
+        }
     }
 
     private suspend fun seedProjectsIfNeeded(database: AppDatabase) {
@@ -195,27 +230,24 @@ object DatabaseSeeder {
         )
     }
 
-    private suspend fun seedAchievementsIfNeeded(database: AppDatabase) {
-        val achievementDao = database.achievementDao()
-        val existingAchievementsById = achievementDao.getAchievements().associateBy { it.id }
-        achievementDao.insertAchievements(
-            SampleProfile.achievements.map { achievement ->
-                val existingAchievement = existingAchievementsById[achievement.id]
-                AchievementEntity(
-                    id = achievement.id,
-                    title = achievement.title,
-                    description = achievement.description,
-                    category = achievement.category,
-                    rarity = achievement.grade,
-                    iconKey = achievement.iconText,
-                    isUnlocked = existingAchievement?.isUnlocked ?: achievement.isUnlocked,
-                    unlockedAt = existingAchievement?.unlockedAt ?: achievement.unlockedAt,
-                    progress = existingAchievement?.progress ?: if (achievement.isUnlocked) 1 else 0,
-                    target = existingAchievement?.target ?: 1
-                )
-            }
+    private suspend fun seedProfileIfNeeded(database: AppDatabase) {
+        val profileDao = database.profileDao()
+        if (profileDao.getUserProfile() != null) return
+
+        val now = LocalDate.now().toString()
+        profileDao.insertUserProfile(
+            UserProfileEntity(
+                name = "TrailNote 사용자",
+                level = 1,
+                exp = 0,
+                representativeAchievementId = null,
+                createdAt = now,
+                updatedAt = now
+            )
         )
     }
 
     private const val TAG_SEPARATOR = "\n"
+    private const val KEY_SEED_VERSION = "seed_version"
+    private const val CURRENT_SEED_VERSION = "1"
 }

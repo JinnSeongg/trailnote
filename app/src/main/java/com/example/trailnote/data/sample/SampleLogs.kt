@@ -14,20 +14,18 @@ object SampleLogs {
     )
 
     val topics = listOf(
-        LogTopic("question", "memo", "의문", "계속 붙잡고 볼 질문", 1),
-        LogTopic("keyword", "memo", "키워드", "반복해서 등장하는 개념", 2),
-        LogTopic("game-material", "idea", "게임 소재", "게임으로 확장 가능한 소재", 1),
-        LogTopic("ui-reference", "resource", "UI 참고", "레이아웃과 인터랙션 참고", 1),
-        LogTopic("weekly-review", "review", "주간 회고", "작업 흐름과 문제 정리", 1)
+        LogTopic("sample-app-thoughts", "memo", "앱 사용 중 떠오른 생각", "사용하면서 바로 떠오른 개선점을 모읍니다.", 1),
+        LogTopic("sample-feature-ideas", "idea", "기능 아이디어", "나중에 실험해볼 기능을 짧게 적어둡니다.", 1),
+        LogTopic("sample-design-references", "resource", "참고한 디자인", "앱 톤에 맞는 화면 참고 자료를 정리합니다.", 1),
+        LogTopic("sample-dev-review", "review", "개발 회고", "작업 후 남길 점과 다음 개선점을 기록합니다.", 1)
     )
 
     val entries = listOf(
-        LogEntry("entry-1", "question", "가속하는 기차 내부의 변화", "관찰자와 기준계가 달라질 때 설명이 어떻게 바뀌는지 정리한다.", "2026-05-21", "2026-05-21", listOf("물리", "질문")),
-        LogEntry("entry-2", "question", "비탄성 기초 감각과 상호관계", "개념 사이의 연결을 짧은 문장으로 다시 쓴다.", "2026-05-21", "2026-05-21", listOf("메모")),
-        LogEntry("entry-3", "keyword", "지식 기반 게임", "지식을 카드, 문제, 보상 구조로 바꾸는 방식을 모은다.", "2026-05-20", "2026-05-20", listOf("게임")),
-        LogEntry("entry-4", "game-material", "체스 변형 게임", "말의 이동 규칙을 카드 효과로 바꿔보는 아이디어.", "2026-05-19", "2026-05-19", listOf("아이디어")),
-        LogEntry("entry-5", "game-material", "오목 변형 카드", "턴마다 카드 효과로 판의 조건을 바꾸는 방식.", "2026-05-18", "2026-05-18", listOf("게임", "카드")),
-        LogEntry("entry-6", "ui-reference", "미니멀 리스트 카드", "얇은 테두리와 낮은 대비로 정보 계층을 만든다.", "2026-05-17", "2026-05-17", listOf("UI")),
-        LogEntry("entry-7", "weekly-review", "XML 전환 회고", "Compose 제거 후 Fragment 흐름과 ViewBinding 연결을 확인한다.", "2026-05-16", "2026-05-16", listOf("회고"))
+        LogEntry("sample-memo-goal-count", "sample-app-thoughts", "오늘 목표는 너무 많으면 부담스럽다", "처음에는 적은 개수로 시작하고 익숙해지면 늘리는 편이 좋다.", "2026-06-08", "2026-06-08", listOf("홈", "목표")),
+        LogEntry("sample-memo-checked-items", "sample-app-thoughts", "체크된 항목도 사라지지 않는 편이 좋다", "완료한 일을 눈으로 확인하면 하루 진행감이 더 잘 보인다.", "2026-06-08", "2026-06-08", listOf("홈", "체크")),
+        LogEntry("sample-idea-daily-review", "sample-feature-ideas", "오늘의 회고 자동 생성", "완료한 일과 남긴 기록을 바탕으로 짧은 회고 초안을 만들 수 있다.", "2026-06-08", "2026-06-08", listOf("아이디어")),
+        LogEntry("sample-idea-routine-difficulty", "sample-feature-ideas", "루틴 난이도 표시", "루틴마다 가벼움, 보통, 집중 같은 난이도를 표시하면 선택 부담이 줄어든다.", "2026-06-08", "2026-06-08", listOf("루틴")),
+        LogEntry("sample-resource-minimal-card", "sample-design-references", "미니멀 카드형 UI", "정보는 카드 안에 담되 여백과 구분선은 과하지 않게 유지한다.", "2026-06-08", "2026-06-08", listOf("UI")),
+        LogEntry("sample-review-single-source", "sample-dev-review", "데이터 소스를 하나로 모아야 한다", "화면마다 샘플을 직접 들고 있으면 실제 데이터와 어긋나기 쉽다.", "2026-06-08", "2026-06-08", listOf("구조"))
     )
 }

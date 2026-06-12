@@ -7,12 +7,14 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.setFragmentResult
-import com.example.trailnote.data.InMemoryDataStore
+import androidx.lifecycle.lifecycleScope
+import com.example.trailnote.R
+import com.example.trailnote.data.repository.RepositoryProvider
 import com.example.trailnote.databinding.DialogEditProfileBinding
+import kotlinx.coroutines.launch
 
 class ProfileEditDialogFragment : DialogFragment() {
     private var binding: DialogEditProfileBinding? = null
-    private var avatarVariant: Int = 0
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         return Dialog(requireContext()).apply {
@@ -28,32 +30,24 @@ class ProfileEditDialogFragment : DialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val current = binding ?: return
-        val summary = InMemoryDataStore.getProfileSummary()
-        avatarVariant = summary.avatarVariant
 
-        current.nameEditText.setText(summary.name)
-        renderAvatar()
-        current.avatarPreviewText.setOnClickListener {
-            avatarVariant = if (avatarVariant == 0) 1 else 0
-            renderAvatar()
+        current.avatarPreviewImage.setImageResource(R.drawable.ic_default_profile)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val summary = repository.getProfileSummaryFromDb()
+            binding?.nameEditText?.setText(summary.name)
         }
 
         current.cancelButton.setOnClickListener {
             dismiss()
         }
         current.saveButton.setOnClickListener {
-            InMemoryDataStore.updateProfile(
-                name = current.nameEditText.text.toString().trim().ifBlank { summary.name },
-                featuredAchievementId = summary.featuredAchievementId,
-                avatarVariant = avatarVariant
-            )
-            setFragmentResult(REQUEST_KEY, Bundle.EMPTY)
-            dismiss()
+            val name = current.nameEditText.text.toString()
+            viewLifecycleOwner.lifecycleScope.launch {
+                repository.updateUserProfileName(name)
+                setFragmentResult(REQUEST_KEY, Bundle.EMPTY)
+                dismiss()
+            }
         }
-    }
-
-    private fun renderAvatar() {
-        binding?.avatarPreviewText?.text = if (avatarVariant == 0) "\u25CF" else "\u25C6"
     }
 
     override fun onStart() {
@@ -73,4 +67,7 @@ class ProfileEditDialogFragment : DialogFragment() {
         const val REQUEST_KEY = "profile_edit_result"
         private const val DIALOG_WIDTH_RATIO = 0.9f
     }
+
+    private val repository
+        get() = RepositoryProvider.getRepository(requireContext())
 }

@@ -23,7 +23,13 @@ object SampleProfile {
         ActivityRecord("record-5", "5/18", 40)
     )
 
-    val achievements = listOf(
+    val achievements: List<Achievement>
+        get() = allAchievements.filterNot { achievement ->
+            removedAchievementIds.contains(achievement.id) ||
+                removedAchievementPrefixes.any { prefix -> achievement.id.startsWith(prefix) }
+        }
+
+    private val allAchievements = listOf(
         achievement("task-complete-1", "첫 번째 체크", "오늘 할 일을 1개 완료하면 획득합니다.", "할 일", "일반", "✓"),
         achievement("task-complete-10", "작은 성공", "오늘 할 일을 누적 10개 완료하면 획득합니다.", "할 일", "일반", "✓"),
         achievement("task-complete-30", "하루 정리 입문", "오늘 할 일을 누적 30개 완료하면 획득합니다.", "할 일", "일반", "✓"),
@@ -135,4 +141,29 @@ object SampleProfile {
             iconText = iconText
         )
     }
+
+    private val removedAchievementIds = setOf(
+        "fixed-routine-1",
+        "fixed-routine-3",
+        "fixed-routine-5",
+        "fixed-routine-10",
+        "fixed-routine-20",
+        "growth-area-1",
+        "growth-area-3",
+        "growth-area-5",
+        "growth-area-10",
+        "growth-topic-1",
+        "growth-topic-5",
+        "growth-topic-10",
+        "growth-topic-20",
+        "growth-topic-50"
+    )
+
+    private val removedAchievementPrefixes = listOf(
+        "log-memo-",
+        "log-idea-",
+        "log-resource-",
+        "log-review-",
+        "achieve-"
+    )
 }
