@@ -17,6 +17,7 @@ import com.example.trailnote.core.selection.MoveTarget
 import com.example.trailnote.core.selection.MoveTargetDialogFragment
 import com.example.trailnote.core.selection.RecyclerDragSelectionHelper
 import com.example.trailnote.core.selection.SelectionState
+import com.example.trailnote.core.util.AchievementUnlockFeedback
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
@@ -65,7 +66,9 @@ class MilestoneDetailFragment : Fragment() {
             onLongClick = ::handleShortTaskLongClick,
             onDoneChange = { task, checked ->
                 viewLifecycleOwner.lifecycleScope.launch {
-                    repository.updateShortTaskDone(task.id, checked)
+                    if (repository.updateShortTaskDone(task.id, checked) != null) {
+                        refreshAchievementsAndShowFeedback()
+                    }
                     reloadMilestone()
                 }
             },
@@ -122,6 +125,11 @@ class MilestoneDetailFragment : Fragment() {
 
     private fun showShortTaskFab() {
         binding?.shortTaskFabButton?.visibility = View.VISIBLE
+    }
+
+    private suspend fun refreshAchievementsAndShowFeedback() {
+        val unlockResult = repository.refreshAchievementUnlocks()
+        AchievementUnlockFeedback.show(requireContext(), unlockResult.newlyUnlockedAchievements)
     }
 
     private fun handleShortTaskClick(shortTask: com.example.trailnote.domain.model.ShortTask) {

@@ -9,6 +9,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.trailnote.core.util.AchievementUnlockFeedback
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.setHeader
@@ -59,7 +60,9 @@ class HomeFragment : Fragment() {
             tasks = emptyList(),
             onDoneChange = { task, checked ->
                 viewLifecycleOwner.lifecycleScope.launch {
-                    repository.updateHomeTaskDoneState(task.id, checked)
+                    if (repository.updateHomeTaskDoneState(task.id, checked) != null) {
+                        refreshAchievementsAndShowFeedback()
+                    }
                     reloadHome()
                 }
             },
@@ -77,7 +80,9 @@ class HomeFragment : Fragment() {
 
         fixedGoalAdapter = HomeGoalAdapter(emptyList()) { task, checked ->
             viewLifecycleOwner.lifecycleScope.launch {
-                repository.updateRoutineDoneState(task.id, checked)
+                if (repository.updateRoutineDoneState(task.id, checked) != null) {
+                    refreshAchievementsAndShowFeedback()
+                }
                 reloadHome()
             }
         }
@@ -86,7 +91,9 @@ class HomeFragment : Fragment() {
 
         todayGoalAdapter = HomeGoalAdapter(emptyList()) { task, checked ->
             viewLifecycleOwner.lifecycleScope.launch {
-                repository.updateRoutineDoneState(task.id, checked)
+                if (repository.updateRoutineDoneState(task.id, checked) != null) {
+                    refreshAchievementsAndShowFeedback()
+                }
                 reloadHome()
             }
         }
@@ -164,6 +171,11 @@ class HomeFragment : Fragment() {
     private fun renderStat(stat: ItemStatCardBinding, doneCount: Int, totalCount: Int) {
         val percent = if (totalCount == 0) 0 else doneCount * 100 / totalCount
         stat.valueText.text = "$percent%"
+    }
+
+    private suspend fun refreshAchievementsAndShowFeedback() {
+        val unlockResult = repository.refreshAchievementUnlocks()
+        AchievementUnlockFeedback.show(requireContext(), unlockResult.newlyUnlockedAchievements)
     }
 
     override fun onDestroyView() {

@@ -17,6 +17,7 @@ import com.example.trailnote.core.selection.MoveTarget
 import com.example.trailnote.core.selection.MoveTargetDialogFragment
 import com.example.trailnote.core.selection.RecyclerDragSelectionHelper
 import com.example.trailnote.core.selection.SelectionState
+import com.example.trailnote.core.util.AchievementUnlockFeedback
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
@@ -65,7 +66,10 @@ class LogTopicDetailFragment : Fragment() {
         InlineQuickAdd.bind(current.entryQuickAdd.root, onDismiss = { showFab() }) { title ->
             viewLifecycleOwner.lifecycleScope.launch {
                 when (quickAddMode) {
-                    QuickAddMode.Entry -> repository.addLogEntry(topicId, title)
+                    QuickAddMode.Entry -> {
+                        repository.addLogEntry(topicId, title)
+                        refreshAchievementsAndShowFeedback()
+                    }
                     QuickAddMode.TopicTitle -> {
                         repository.updateLogTopicTitle(topicId, title)?.let { updated ->
                             current.root.findViewById<TextView>(R.id.headerTitle)?.text = updated.title
@@ -104,6 +108,11 @@ class LogTopicDetailFragment : Fragment() {
         val current = binding ?: return
         current.entryAddButton.visibility = View.GONE
         InlineQuickAdd.show(current.entryQuickAdd.root, hint)
+    }
+
+    private suspend fun refreshAchievementsAndShowFeedback() {
+        val unlockResult = repository.refreshAchievementUnlocks()
+        AchievementUnlockFeedback.show(requireContext(), unlockResult.newlyUnlockedAchievements)
     }
 
     private fun openTitleEdit() {

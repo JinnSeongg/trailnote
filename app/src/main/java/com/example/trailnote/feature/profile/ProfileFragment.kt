@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
@@ -68,7 +67,6 @@ class ProfileFragment : Fragment() {
             bindProfileStats(summary)
             binding?.activityChart?.setValues(activityTrend.map { it.averageCompletionRate })
             bindAchievementPreview(previewAchievements)
-            showAchievementUnlockFeedback(unlockResult.newlyUnlockedAchievements)
             loadActivityStats(selectedPeriod)
         }
     }
@@ -78,16 +76,6 @@ class ProfileFragment : Fragment() {
         current.achievementEmptyText.visibility = if (previewAchievements.isEmpty()) View.VISIBLE else View.GONE
         current.achievementList.visibility = if (previewAchievements.isEmpty()) View.GONE else View.VISIBLE
         current.achievementList.adapter = AchievementAdapter(previewAchievements)
-    }
-
-    private fun showAchievementUnlockFeedback(achievements: List<Achievement>) {
-        if (achievements.isEmpty()) return
-        val message = if (achievements.size == 1) {
-            "\uC5C5\uC801 \uB2EC\uC131: ${achievements.first().title}"
-        } else {
-            "\uC5C5\uC801 ${achievements.size}\uAC1C \uB2EC\uC131"
-        }
-        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
     }
 
     private fun setupStatsPeriodControls() {

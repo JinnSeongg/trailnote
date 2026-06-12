@@ -18,6 +18,7 @@ import com.example.trailnote.core.selection.MoveTarget
 import com.example.trailnote.core.selection.MoveTargetDialogFragment
 import com.example.trailnote.core.selection.RecyclerDragSelectionHelper
 import com.example.trailnote.core.selection.SelectionState
+import com.example.trailnote.core.util.AchievementUnlockFeedback
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
@@ -69,7 +70,9 @@ class GrowthTopicDetailFragment : Fragment() {
             onLongClick = ::handleRoutineLongClick,
             onDoneChange = { routine, checked ->
                 viewLifecycleOwner.lifecycleScope.launch {
-                    repository.updateRoutineDoneState(routine.id, checked)
+                    if (repository.updateRoutineDoneState(routine.id, checked) != null) {
+                        refreshAchievementsAndShowFeedback()
+                    }
                     reloadTopic()
                 }
             },
@@ -128,6 +131,11 @@ class GrowthTopicDetailFragment : Fragment() {
 
     private fun showRoutineFab() {
         binding?.routineFabButton?.visibility = View.VISIBLE
+    }
+
+    private suspend fun refreshAchievementsAndShowFeedback() {
+        val unlockResult = repository.refreshAchievementUnlocks()
+        AchievementUnlockFeedback.show(requireContext(), unlockResult.newlyUnlockedAchievements)
     }
 
     private fun handleRoutineClick(routine: com.example.trailnote.domain.model.Routine) {

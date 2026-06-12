@@ -12,6 +12,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.NavHostFragment
+import com.example.trailnote.core.util.AchievementUnlockFeedback
 import com.example.trailnote.core.selection.SelectionController
 import com.example.trailnote.core.selection.SelectionState
 import com.example.trailnote.data.local.db.DatabaseSeeder
@@ -40,7 +41,7 @@ class MainActivity : AppCompatActivity() {
             DatabaseSeeder.seedIfNeeded(applicationContext)
             val repository = RepositoryProvider.getRepository(applicationContext)
             repository.recordAppVisitIfNeeded()
-            showAchievementUnlockFeedback(repository.refreshAchievementUnlocks().newlyUnlockedAchievements)
+            AchievementUnlockFeedback.show(this@MainActivity, repository.refreshAchievementUnlocks().newlyUnlockedAchievements)
         }
 
         val navHostFragment = supportFragmentManager
@@ -151,16 +152,6 @@ class MainActivity : AppCompatActivity() {
         val navHost = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
         return navHost?.childFragmentManager?.primaryNavigationFragment as? HomeFragment
     }
-    private fun showAchievementUnlockFeedback(achievements: List<com.example.trailnote.domain.model.Achievement>) {
-        if (achievements.isEmpty()) return
-        val message = if (achievements.size == 1) {
-            "\uC5C5\uC801 \uB2EC\uC131: ${achievements.first().title}"
-        } else {
-            "\uC5C5\uC801 ${achievements.size}\uAC1C \uB2EC\uC131"
-        }
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    }
-
     private fun renderSelectionState(state: SelectionState) {
         binding.bottomNavigation.isVisible = !state.isInSelectionMode
         binding.selectionActionBar.root.isVisible = state.isInSelectionMode

@@ -17,6 +17,7 @@ import com.example.trailnote.R
 import com.example.trailnote.core.selection.MoveTarget
 import com.example.trailnote.core.selection.MoveTargetDialogFragment
 import com.example.trailnote.core.selection.SelectionState
+import com.example.trailnote.core.util.AchievementUnlockFeedback
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
@@ -65,7 +66,10 @@ class LogFragment : Fragment() {
                         selectedCategoryId = category.id
                     }
                     is QuickAddMode.Topic -> repository.addLogTopic(mode.categoryId, text)
-                    is QuickAddMode.Entry -> repository.addLogEntry(mode.topicId, text)
+                    is QuickAddMode.Entry -> {
+                        repository.addLogEntry(mode.topicId, text)
+                        refreshAchievementsAndShowFeedback()
+                    }
                     is QuickAddMode.EditCategory -> repository.updateLogCategoryName(mode.categoryId, text)
                     is QuickAddMode.EditTopic -> repository.updateLogTopicTitle(mode.topicId, text)
                     null -> return@launch
@@ -207,6 +211,11 @@ class LogFragment : Fragment() {
         quickAddMode = null
         InlineQuickAdd.hide(current.categoryQuickAdd.root)
         updateTopicFabVisibility()
+    }
+
+    private suspend fun refreshAchievementsAndShowFeedback() {
+        val unlockResult = repository.refreshAchievementUnlocks()
+        AchievementUnlockFeedback.show(requireContext(), unlockResult.newlyUnlockedAchievements)
     }
 
     private fun showSelectedCategoryMenu(anchor: View) {
