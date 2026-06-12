@@ -125,8 +125,8 @@ class TrailNoteRepository(
     }
 
     suspend fun addProjectCategory(title: String): ProjectCategory {
-        val normalized = title.trim()
-        val existing = projectDao.getProjectCategories().firstOrNull { it.title == normalized }
+        val normalized = title.trim().ifEmpty { DEFAULT_CATEGORY }
+        val existing = projectDao.getProjectCategoryByTitle(normalized)
         if (existing != null) return existing.toDomain()
         val now = currentTimestamp()
         val category = ProjectCategoryEntity(
@@ -136,7 +136,12 @@ class TrailNoteRepository(
             updatedAt = now
         )
         val id = projectDao.insertProjectCategory(category)
-        return category.copy(id = id).toDomain()
+        val savedCategory = if (id == INSERT_IGNORED) {
+            projectDao.getProjectCategoryByTitle(normalized)
+        } else {
+            category.copy(id = id)
+        }
+        return (savedCategory ?: category.copy(id = id)).toDomain()
     }
 
     suspend fun addMilestone(projectId: String, title: String): Milestone {
@@ -1561,7 +1566,7 @@ class TrailNoteRepository(
 
     private suspend fun findOrCreateProjectCategory(title: String): ProjectCategoryEntity {
         val normalized = title.trim().ifEmpty { DEFAULT_CATEGORY }
-        projectDao.getProjectCategories().firstOrNull { it.title == normalized }?.let { return it }
+        projectDao.getProjectCategoryByTitle(normalized)?.let { return it }
         val now = currentTimestamp()
         val category = ProjectCategoryEntity(
             title = normalized,
@@ -1570,6 +1575,9 @@ class TrailNoteRepository(
             updatedAt = now
         )
         val id = projectDao.insertProjectCategory(category)
+        if (id == INSERT_IGNORED) {
+            projectDao.getProjectCategoryByTitle(normalized)?.let { return it }
+        }
         return category.copy(id = id)
     }
 

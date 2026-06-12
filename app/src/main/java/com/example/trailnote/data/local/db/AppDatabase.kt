@@ -51,7 +51,7 @@ import com.example.trailnote.data.local.entity.UserProfileEntity
         RoutineCompletionRecordEntity::class,
         RoutineExposureBagEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

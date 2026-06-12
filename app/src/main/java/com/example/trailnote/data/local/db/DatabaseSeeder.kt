@@ -1,6 +1,7 @@
 package com.example.trailnote.data.local.db
 
 import android.content.Context
+import androidx.room.withTransaction
 import com.example.trailnote.data.local.entity.AppPreferenceEntity
 import com.example.trailnote.data.local.entity.GrowthAreaEntity
 import com.example.trailnote.data.local.entity.GrowthTopicEntity
@@ -20,19 +21,29 @@ import com.example.trailnote.data.sample.SampleHome
 import com.example.trailnote.data.sample.SampleLogs
 import com.example.trailnote.data.sample.SampleProjects
 import java.time.LocalDate
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 object DatabaseSeeder {
-    suspend fun seedIfNeeded(context: Context) {
-        val database = AppDatabaseProvider.getDatabase(context)
-        val homeDao = database.homeDao()
-        if (homeDao.getPreference(KEY_SEED_VERSION)?.value == CURRENT_SEED_VERSION) return
+    private val seedMutex = Mutex()
 
-        seedHomeIfNeeded(database)
-        seedProjectsIfNeeded(database)
-        seedLogsIfNeeded(database)
-        seedGrowthIfNeeded(database)
-        seedProfileIfNeeded(database)
-        homeDao.setPreference(AppPreferenceEntity(KEY_SEED_VERSION, CURRENT_SEED_VERSION))
+    suspend fun seedIfNeeded(context: Context) {
+        seedMutex.withLock {
+            val database = AppDatabaseProvider.getDatabase(context)
+            database.withTransaction {
+                cleanupProjectCategoryDuplicates(database)
+                val homeDao = database.homeDao()
+                if (homeDao.getPreference(KEY_SEED_VERSION)?.value == CURRENT_SEED_VERSION) return@withTransaction
+
+                seedHomeIfNeeded(database)
+                seedProjectsIfNeeded(database)
+                seedLogsIfNeeded(database)
+                seedGrowthIfNeeded(database)
+                seedProfileIfNeeded(database)
+                cleanupProjectCategoryDuplicates(database)
+                homeDao.setPreference(AppPreferenceEntity(KEY_SEED_VERSION, CURRENT_SEED_VERSION))
+            }
+        }
     }
 
     private suspend fun seedHomeIfNeeded(database: AppDatabase) {
@@ -66,28 +77,30 @@ object DatabaseSeeder {
     private suspend fun seedProjectsIfNeeded(database: AppDatabase) {
         val projectDao = database.projectDao()
         val now = LocalDate.now().toString()
-        if (projectDao.getProjectCategories().isEmpty()) {
-            projectDao.insertProjectCategories(
-                SampleProjects.projects
-                    .map { it.category.trim() }
-                    .filter { it.isNotEmpty() }
-                    .distinct()
-                    .mapIndexed { index, title ->
-                        ProjectCategoryEntity(
-                            title = title,
-                            orderIndex = index + 1,
-                            createdAt = now,
-                            updatedAt = now
-                        )
-                    }
-            )
+        val existingCategoryTitles = projectDao.getProjectCategories().map { it.title }.toSet()
+        val categoryOrderBase = projectDao.getMaxProjectCategoryOrderIndex()
+        val missingCategories = SampleProjects.projects
+            .map { it.category.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .filterNot { it in existingCategoryTitles }
+            .mapIndexed { index, title ->
+                ProjectCategoryEntity(
+                    title = title,
+                    orderIndex = categoryOrderBase + index + 1,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            }
+        if (missingCategories.isNotEmpty()) {
+            projectDao.insertProjectCategories(missingCategories)
         }
 
-        if (projectDao.getProjects().isNotEmpty()) return
-
         val categoriesByTitle = projectDao.getProjectCategories().associateBy { it.title }
-        projectDao.insertProjects(
-            SampleProjects.projects.mapIndexed { index, project ->
+        val existingProjectIds = projectDao.getProjects().map { it.id }.toSet()
+        val missingProjects = SampleProjects.projects
+            .filterNot { it.id in existingProjectIds }
+            .mapIndexed { index, project ->
                 ProjectEntity(
                     id = project.id,
                     title = project.title,
@@ -102,9 +115,14 @@ object DatabaseSeeder {
                     isArchived = false
                 )
             }
-        )
-        projectDao.insertMilestones(
-            SampleProjects.milestones.map { milestone ->
+        if (missingProjects.isNotEmpty()) {
+            projectDao.insertProjects(missingProjects)
+        }
+
+        val existingMilestoneIds = projectDao.getMilestones().map { it.id }.toSet()
+        val missingMilestones = SampleProjects.milestones
+            .filterNot { it.id in existingMilestoneIds }
+            .map { milestone ->
                 MilestoneEntity(
                     id = milestone.id,
                     projectId = milestone.projectId,
@@ -116,9 +134,14 @@ object DatabaseSeeder {
                     updatedAt = now
                 )
             }
-        )
-        projectDao.insertShortTasks(
-            SampleProjects.shortTasks.map { task ->
+        if (missingMilestones.isNotEmpty()) {
+            projectDao.insertMilestones(missingMilestones)
+        }
+
+        val existingShortTaskIds = projectDao.getShortTasks().map { it.id }.toSet()
+        val missingShortTasks = SampleProjects.shortTasks
+            .filterNot { it.id in existingShortTaskIds }
+            .map { task ->
                 ShortTaskEntity(
                     id = task.id,
                     milestoneId = task.milestoneId,
@@ -129,7 +152,9 @@ object DatabaseSeeder {
                     completedAt = if (task.isDone) now else null
                 )
             }
-        )
+        if (missingShortTasks.isNotEmpty()) {
+            projectDao.insertShortTasks(missingShortTasks)
+        }
     }
 
     private suspend fun seedLogsIfNeeded(database: AppDatabase) {
@@ -244,6 +269,48 @@ object DatabaseSeeder {
                 createdAt = now,
                 updatedAt = now
             )
+        )
+    }
+
+    private fun cleanupProjectCategoryDuplicates(database: AppDatabase) {
+        val db = database.openHelper.writableDatabase
+        db.execSQL(
+            """
+            UPDATE `projects`
+            SET `categoryId` = (
+                SELECT MIN(`canonical`.`id`)
+                FROM `project_categories` AS `canonical`
+                WHERE TRIM(`canonical`.`title`) = TRIM((
+                    SELECT `current`.`title`
+                    FROM `project_categories` AS `current`
+                    WHERE `current`.`id` = `projects`.`categoryId`
+                    LIMIT 1
+                ))
+            )
+            WHERE `categoryId` IS NOT NULL
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            UPDATE `projects`
+            SET `category` = COALESCE((
+                SELECT `project_categories`.`title`
+                FROM `project_categories`
+                WHERE `project_categories`.`id` = `projects`.`categoryId`
+                LIMIT 1
+            ), `category`)
+            WHERE `categoryId` IS NOT NULL
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            DELETE FROM `project_categories`
+            WHERE `id` NOT IN (
+                SELECT MIN(`id`)
+                FROM `project_categories`
+                GROUP BY TRIM(`title`)
+            )
+            """.trimIndent()
         )
     }
 

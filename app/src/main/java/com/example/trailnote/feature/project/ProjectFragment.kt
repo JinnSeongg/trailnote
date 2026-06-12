@@ -311,7 +311,9 @@ class ProjectFragment : Fragment() {
     private fun reloadProjects() {
         viewLifecycleOwner.lifecycleScope.launch {
             DatabaseSeeder.seedIfNeeded(requireContext().applicationContext)
-            projectCategories = repository.getProjectCategories().sortedByStableCreationOrder()
+            projectCategories = repository.getProjectCategories()
+                .distinctBy { it.title.trim() }
+                .sortedByStableCreationOrder()
             projects = repository.getProjects().sortedByDescending { it.updatedSortKey() }
             milestones = repository.getMilestones()
             shortTasks = repository.getShortTasks()

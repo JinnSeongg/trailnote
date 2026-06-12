@@ -32,16 +32,20 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        lifecycleScope.launch {
+            DatabaseSeeder.seedIfNeeded(applicationContext)
+            initializeUi()
+            val repository = RepositoryProvider.getRepository(applicationContext)
+            repository.recordAppVisitIfNeeded()
+            AchievementUnlockFeedback.show(this@MainActivity, repository.refreshAchievementUnlocks().newlyUnlockedAchievements)
+        }
+    }
+
+    private fun initializeUi() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         selectionController = SelectionController().also {
             it.addStateListener(::renderSelectionState)
-        }
-        lifecycleScope.launch {
-            DatabaseSeeder.seedIfNeeded(applicationContext)
-            val repository = RepositoryProvider.getRepository(applicationContext)
-            repository.recordAppVisitIfNeeded()
-            AchievementUnlockFeedback.show(this@MainActivity, repository.refreshAchievementUnlocks().newlyUnlockedAchievements)
         }
 
         val navHostFragment = supportFragmentManager

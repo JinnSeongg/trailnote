@@ -17,7 +17,7 @@ object AppDatabaseProvider {
                 AppDatabase::class.java,
                 AppDatabase.DATABASE_NAME
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
                 .also { database = it }
         }
@@ -142,5 +142,55 @@ object AppDatabaseProvider {
                 "ALTER TABLE `growth_areas` ADD COLUMN `colorHex` TEXT NOT NULL DEFAULT '${GrowthColorPalette.DEFAULT_COLOR}'"
             )
         }
+    }
+
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            dedupeProjectCategories(db)
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_project_categories_title` ON `project_categories` (`title`)"
+            )
+        }
+    }
+
+    private fun dedupeProjectCategories(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            UPDATE `projects`
+            SET `categoryId` = (
+                SELECT MIN(`canonical`.`id`)
+                FROM `project_categories` AS `canonical`
+                WHERE TRIM(`canonical`.`title`) = TRIM((
+                    SELECT `current`.`title`
+                    FROM `project_categories` AS `current`
+                    WHERE `current`.`id` = `projects`.`categoryId`
+                    LIMIT 1
+                ))
+            )
+            WHERE `categoryId` IS NOT NULL
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            UPDATE `projects`
+            SET `category` = COALESCE((
+                SELECT `project_categories`.`title`
+                FROM `project_categories`
+                WHERE `project_categories`.`id` = `projects`.`categoryId`
+                LIMIT 1
+            ), `category`)
+            WHERE `categoryId` IS NOT NULL
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            DELETE FROM `project_categories`
+            WHERE `id` NOT IN (
+                SELECT MIN(`id`)
+                FROM `project_categories`
+                GROUP BY TRIM(`title`)
+            )
+            """.trimIndent()
+        )
     }
 }

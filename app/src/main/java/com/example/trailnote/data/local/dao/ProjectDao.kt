@@ -19,6 +19,9 @@ interface ProjectDao {
     @Query("SELECT * FROM project_categories WHERE id = :id")
     suspend fun getProjectCategoryById(id: Long): ProjectCategoryEntity?
 
+    @Query("SELECT * FROM project_categories WHERE title = :title LIMIT 1")
+    suspend fun getProjectCategoryByTitle(title: String): ProjectCategoryEntity?
+
     @Query("SELECT COALESCE(MAX(orderIndex), 0) FROM project_categories")
     suspend fun getMaxProjectCategoryOrderIndex(): Int
 
@@ -61,10 +64,10 @@ interface ProjectDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProjects(projects: List<ProjectEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertProjectCategory(category: ProjectCategoryEntity): Long
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertProjectCategories(categories: List<ProjectCategoryEntity>): List<Long>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
