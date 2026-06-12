@@ -37,8 +37,11 @@ interface GrowthDao {
     @Query("SELECT * FROM routines WHERE growthTopicId = :growthTopicId ORDER BY orderIndex ASC")
     suspend fun getRoutinesByTopicId(growthTopicId: String): List<RoutineEntity>
 
-    @Query("SELECT * FROM routines WHERE isFixed = 1 AND isActive = 1 ORDER BY orderIndex ASC")
+    @Query("SELECT * FROM routines WHERE isFixed = 1 AND isActive = 1 ORDER BY homeFixedOrderIndex IS NULL ASC, homeFixedOrderIndex ASC, createdAt ASC, id ASC")
     suspend fun getFixedActiveRoutines(): List<RoutineEntity>
+
+    @Query("SELECT COALESCE(MAX(homeFixedOrderIndex), -1) FROM routines WHERE isFixed = 1")
+    suspend fun getMaxHomeFixedOrderIndex(): Int
 
     @Query("SELECT * FROM routines WHERE isFixed = 0 AND isActive = 1 ORDER BY orderIndex ASC")
     suspend fun getRandomCandidateRoutines(): List<RoutineEntity>
@@ -91,8 +94,8 @@ interface GrowthDao {
     @Update
     suspend fun updateRoutine(routine: RoutineEntity)
 
-    @Query("UPDATE routines SET isFixed = :isFixed, updatedAt = :updatedAt WHERE id = :routineId")
-    suspend fun updateRoutineFixedState(routineId: String, isFixed: Boolean, updatedAt: String): Int
+    @Query("UPDATE routines SET homeFixedOrderIndex = :homeFixedOrderIndex, updatedAt = :updatedAt WHERE id = :routineId")
+    suspend fun updateRoutineHomeFixedOrderIndex(routineId: String, homeFixedOrderIndex: Int?, updatedAt: String): Int
 
     @Delete
     suspend fun deleteGrowthArea(area: GrowthAreaEntity)

@@ -127,6 +127,6 @@ interface ProjectDao {
     @Query("UPDATE milestones SET projectId = :projectId, updatedAt = :updatedAt WHERE id IN (:milestoneIds)")
     suspend fun moveMilestonesToProject(milestoneIds: Collection<String>, projectId: String, updatedAt: String)
 
-    @Query("UPDATE short_tasks SET milestoneId = :milestoneId WHERE id IN (:shortTaskIds)")
-    suspend fun moveShortTasksToMilestone(shortTaskIds: Collection<String>, milestoneId: String)
+    @Query("UPDATE short_tasks SET milestoneId = :milestoneId, updatedAt = :updatedAt WHERE id IN (:shortTaskIds)")
+    suspend fun moveShortTasksToMilestone(shortTaskIds: Collection<String>, milestoneId: String, updatedAt: String)
 }

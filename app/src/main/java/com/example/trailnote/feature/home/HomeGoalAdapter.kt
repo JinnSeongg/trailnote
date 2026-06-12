@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import java.util.Collections
 import androidx.recyclerview.widget.RecyclerView
 import com.example.trailnote.databinding.ItemHomeGoalBinding
 import com.example.trailnote.domain.model.GrowthColorPalette
@@ -37,6 +38,15 @@ class HomeGoalAdapter(
         items.addAll(newItems)
         notifyDataSetChanged()
     }
+
+    fun moveItem(fromPosition: Int, toPosition: Int): Boolean {
+        if (fromPosition !in items.indices || toPosition !in items.indices) return false
+        Collections.swap(items, fromPosition, toPosition)
+        notifyItemMoved(fromPosition, toPosition)
+        return true
+    }
+
+    fun getCurrentRoutineIds(): List<String> = items.map { it.id }
 
     class ViewHolder(private val binding: ItemHomeGoalBinding) : RecyclerView.ViewHolder(binding.root) {
         private val defaultTextColors: ColorStateList = binding.checkBox.textColors

@@ -19,7 +19,7 @@ class ProjectSectionAdapter(
     private val onCategoryClick: (ProjectSection) -> Unit,
     private val onCategoryAddClick: (ProjectSection) -> Unit,
     private val onCategoryLongClick: (ProjectSection, View) -> Unit,
-    private val projectProgressProvider: (Project) -> Int = { 0 }
+    private val projectUiStateProvider: (Project) -> ProjectUiState = { ProjectUiState() }
 ) : RecyclerView.Adapter<ProjectSectionAdapter.ViewHolder>() {
     private val items = mutableListOf<ProjectSection>()
 
@@ -38,7 +38,7 @@ class ProjectSectionAdapter(
             onCategoryClick,
             onCategoryAddClick,
             onCategoryLongClick,
-            projectProgressProvider
+            projectUiStateProvider
         )
     }
 
@@ -63,7 +63,7 @@ class ProjectSectionAdapter(
             onCategoryClick: (ProjectSection) -> Unit,
             onCategoryAddClick: (ProjectSection) -> Unit,
             onCategoryLongClick: (ProjectSection, View) -> Unit,
-            projectProgressProvider: (Project) -> Int
+            projectUiStateProvider: (Project) -> ProjectUiState
         ) {
             binding.categoryText.text = section.category
             binding.categoryText.setOnClickListener { onCategoryClick(section) }
@@ -78,7 +78,7 @@ class ProjectSectionAdapter(
                 onProjectClick,
                 onProjectLongClick,
                 isProjectSelected,
-                projectProgressProvider
+                projectUiStateProvider
             )
             binding.projectCardList.adapter = adapter
             dragSelectionHelper?.let { binding.projectCardList.removeOnItemTouchListener(it) }

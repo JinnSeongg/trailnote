@@ -8,7 +8,9 @@ import android.view.ViewGroup
 import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.example.trailnote.core.util.AchievementUnlockFeedback
 import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
@@ -30,6 +32,7 @@ class HomeFragment : Fragment() {
     private lateinit var todayWorkAdapter: HomeTaskAdapter
     private lateinit var fixedGoalAdapter: HomeGoalAdapter
     private lateinit var todayGoalAdapter: HomeGoalAdapter
+    private var fixedGoalTouchHelper: ItemTouchHelper? = null
     private var todayWorks: List<Task> = emptyList()
     private var fixedRoutines: List<Routine> = emptyList()
     private var todayRoutines: List<Routine> = emptyList()
@@ -88,6 +91,7 @@ class HomeFragment : Fragment() {
         }
         current.fixedGoalList.layoutManager = LinearLayoutManager(requireContext())
         current.fixedGoalList.adapter = fixedGoalAdapter
+        attachFixedGoalDragHelper()
 
         todayGoalAdapter = HomeGoalAdapter(emptyList()) { task, checked ->
             viewLifecycleOwner.lifecycleScope.launch {
@@ -119,12 +123,6 @@ class HomeFragment : Fragment() {
                 callback.isEnabled = InlineQuickAdd.isVisible(quickAdd)
             }
         })
-        requireActivity().supportFragmentManager.setFragmentResultListener(
-            REQUEST_TODAY_GOAL_COUNT_CHANGED,
-            viewLifecycleOwner
-        ) { _, _ ->
-            reloadHome()
-        }
         reloadHome()
     }
 
@@ -173,12 +171,50 @@ class HomeFragment : Fragment() {
         stat.valueText.text = "$percent%"
     }
 
+    private fun attachFixedGoalDragHelper() {
+        val current = binding ?: return
+        if (fixedGoalTouchHelper != null) return
+        var hasMoved = false
+        fixedGoalTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN,
+            0
+        ) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                val moved = fixedGoalAdapter.moveItem(
+                    viewHolder.bindingAdapterPosition,
+                    target.bindingAdapterPosition
+                )
+                hasMoved = hasMoved || moved
+                return moved
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                if (!hasMoved) return
+                hasMoved = false
+                viewLifecycleOwner.lifecycleScope.launch {
+                    repository.updateHomeFixedRoutineOrders(fixedGoalAdapter.getCurrentRoutineIds())
+                }
+            }
+        }).also { helper ->
+            helper.attachToRecyclerView(current.fixedGoalList)
+        }
+    }
+
     private suspend fun refreshAchievementsAndShowFeedback() {
         val unlockResult = repository.refreshAchievementUnlocks()
         AchievementUnlockFeedback.show(requireContext(), unlockResult.newlyUnlockedAchievements)
     }
 
     override fun onDestroyView() {
+        fixedGoalTouchHelper?.attachToRecyclerView(null)
+        fixedGoalTouchHelper = null
         binding = null
         super.onDestroyView()
     }
@@ -204,7 +240,6 @@ class HomeFragment : Fragment() {
         get() = RepositoryProvider.getRepository(requireContext())
 
     companion object {
-        const val REQUEST_TODAY_GOAL_COUNT_CHANGED = "today_goal_count_changed"
         private const val TAG = "GrowthColorDebug"
     }
 }

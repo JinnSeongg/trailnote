@@ -24,5 +24,6 @@ data class ShortTaskEntity(
     val isDone: Boolean,
     val orderIndex: Int,
     val createdAt: String,
+    val updatedAt: String = createdAt,
     val completedAt: String?
 )

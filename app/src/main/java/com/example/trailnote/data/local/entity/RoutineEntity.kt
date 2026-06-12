@@ -29,5 +29,6 @@ data class RoutineEntity(
     val orderIndex: Int,
     val createdAt: String,
     val updatedAt: String,
-    val lastCompletedDate: String?
+    val lastCompletedDate: String?,
+    val homeFixedOrderIndex: Int? = null
 )

@@ -159,8 +159,15 @@ class LogFragment : Fragment() {
         } else {
             topics.filter { it.categoryId == selectedCategoryId }
         }
+        val categoriesById = categories.associateBy { it.id }
+        val sections = visibleTopics.map { topic ->
+            LogTopicSection(
+                topic = topic,
+                categoryName = categoriesById[topic.categoryId]?.name.orEmpty()
+            )
+        }
         topicSectionAdapter = LogTopicSectionAdapter(
-            topics = visibleTopics,
+            sections = sections,
             entriesForTopic = { topicId -> entries.filter { it.topicId == topicId } },
             onTopicClick = ::handleTopicClick,
             onTopicLongClick = ::showTopicMenu,

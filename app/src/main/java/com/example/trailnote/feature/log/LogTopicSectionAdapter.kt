@@ -13,7 +13,7 @@ import com.example.trailnote.domain.model.LogEntry
 import com.example.trailnote.domain.model.LogTopic
 
 class LogTopicSectionAdapter(
-    private val topics: List<LogTopic>,
+    private val sections: List<LogTopicSection>,
     private val entriesForTopic: (String) -> List<LogEntry>,
     private val onTopicClick: (LogTopic) -> Unit,
     private val onTopicLongClick: (LogTopic, View) -> Unit = { _, _ -> },
@@ -29,9 +29,10 @@ class LogTopicSectionAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        val section = sections[position]
         holder.bind(
-            topic = topics[position],
-            entries = entriesForTopic(topics[position].id),
+            section = section,
+            entries = entriesForTopic(section.topic.id),
             onTopicClick = onTopicClick,
             onTopicLongClick = onTopicLongClick,
             onEntryClick = onEntryClick,
@@ -43,7 +44,7 @@ class LogTopicSectionAdapter(
         )
     }
 
-    override fun getItemCount(): Int = topics.size
+    override fun getItemCount(): Int = sections.size
 
     fun closeOpen() = Unit
 
@@ -51,7 +52,7 @@ class LogTopicSectionAdapter(
         private var dragSelectionHelper: RecyclerDragSelectionHelper? = null
 
         fun bind(
-            topic: LogTopic,
+            section: LogTopicSection,
             entries: List<LogEntry>,
             onTopicClick: (LogTopic) -> Unit,
             onTopicLongClick: (LogTopic, View) -> Unit,
@@ -62,7 +63,9 @@ class LogTopicSectionAdapter(
             onEntryDragStarted: (LogEntry) -> Unit,
             onAddClick: (LogTopic) -> Unit
         ) {
+            val topic = section.topic
             binding.topicTitleText.text = topic.title
+            binding.topicCategoryBadgeText.text = section.categoryName
             binding.topicTitleText.setBackgroundResource(android.R.color.transparent)
             binding.topicTitleText.setOnClickListener { onTopicClick(topic) }
             binding.topicTitleText.setOnLongClickListener {
@@ -86,3 +89,8 @@ class LogTopicSectionAdapter(
         }
     }
 }
+
+data class LogTopicSection(
+    val topic: LogTopic,
+    val categoryName: String
+)

@@ -171,6 +171,7 @@ class TrailNoteRepository(
             isDone = false,
             orderIndex = projectDao.getShortTasksByMilestoneId(milestoneId).size + 1,
             createdAt = now,
+            updatedAt = now,
             completedAt = null
         )
         projectDao.insertShortTask(shortTask)
@@ -252,10 +253,16 @@ class TrailNoteRepository(
 
     suspend fun updateShortTask(shortTask: ShortTask): ShortTask? {
         val current = projectDao.getShortTaskById(shortTask.id) ?: return null
+        val now = currentTimestamp()
         val updated = current.copy(
             title = shortTask.title,
             isDone = shortTask.isDone,
-            completedAt = if (shortTask.isDone) current.completedAt ?: currentTimestamp() else null
+            updatedAt = now,
+            completedAt = if (shortTask.isDone) {
+                if (current.isDone) current.completedAt ?: now else now
+            } else {
+                null
+            }
         )
         projectDao.updateShortTask(updated)
         when {
@@ -277,9 +284,11 @@ class TrailNoteRepository(
 
     suspend fun updateShortTaskDone(shortTaskId: String, isDone: Boolean): ShortTask? {
         val current = projectDao.getShortTaskById(shortTaskId) ?: return null
+        val now = currentTimestamp()
         val updated = current.copy(
             isDone = isDone,
-            completedAt = if (isDone) currentTimestamp() else null
+            updatedAt = now,
+            completedAt = if (isDone) now else null
         )
         projectDao.updateShortTask(updated)
         if (isDone) {
@@ -326,7 +335,7 @@ class TrailNoteRepository(
     }
     suspend fun moveShortTasksToMilestone(shortTaskIds: Collection<String>, milestoneId: String) {
         val oldMilestoneIds = shortTaskIds.mapNotNull { projectDao.getShortTaskById(it)?.milestoneId }.toSet()
-        projectDao.moveShortTasksToMilestone(shortTaskIds, milestoneId)
+        projectDao.moveShortTasksToMilestone(shortTaskIds, milestoneId, currentTimestamp())
         (oldMilestoneIds + milestoneId).forEach { touchProjectByMilestoneId(it) }
     }
 
@@ -603,6 +612,11 @@ class TrailNoteRepository(
 
     suspend fun updateRoutine(routine: Routine): Routine? {
         val current = growthDao.getRoutineById(routine.id) ?: return null
+        val homeFixedOrderIndex = when {
+            !routine.isFixed -> null
+            current.isFixed && current.homeFixedOrderIndex != null -> current.homeFixedOrderIndex
+            else -> growthDao.getMaxHomeFixedOrderIndex() + 1
+        }
         val updated = current.copy(
             title = routine.title,
             description = routine.description,
@@ -611,7 +625,8 @@ class TrailNoteRepository(
             repeatType = routine.repeatType.name,
             isDoneToday = routine.isDoneToday,
             updatedAt = currentDate(),
-            lastCompletedDate = if (routine.isDoneToday) current.lastCompletedDate ?: currentDate() else null
+            lastCompletedDate = if (routine.isDoneToday) current.lastCompletedDate ?: currentDate() else null,
+            homeFixedOrderIndex = homeFixedOrderIndex
         )
         growthDao.updateRoutine(updated)
         return updated.toDomain()
@@ -694,10 +709,19 @@ class TrailNoteRepository(
     }
 
     suspend fun updateRoutineFixedState(routineId: String, isFixed: Boolean): Routine? {
-        val updatedRows = growthDao.updateRoutineFixedState(routineId, isFixed, currentDate())
-        if (updatedRows == 0) return null
+        val current = growthDao.getRoutineById(routineId) ?: return null
+        val updated = current.copy(
+            isFixed = isFixed,
+            homeFixedOrderIndex = if (isFixed) {
+                current.homeFixedOrderIndex ?: growthDao.getMaxHomeFixedOrderIndex() + 1
+            } else {
+                null
+            },
+            updatedAt = currentDate()
+        )
+        growthDao.updateRoutine(updated)
         adjustTodayRoutineGoalsForCountChange(currentDate(), getHomeGoalSettings().randomTodayGoalCount)
-        return growthDao.getRoutineById(routineId)?.toDomain()
+        return updated.toDomain()
     }
 
     suspend fun deleteGrowthArea(areaId: String) = growthDao.deleteGrowthAreaById(areaId)
@@ -764,17 +788,36 @@ class TrailNoteRepository(
         val normalizedCount = count.coerceIn(MIN_RANDOM_TODAY_GOAL_COUNT, MAX_RANDOM_TODAY_GOAL_COUNT)
         val settings = HomeGoalSettingsEntity(randomTodayGoalCount = normalizedCount)
         homeDao.insertOrUpdateHomeGoalSettings(settings)
-        adjustTodayRoutineGoalsForCountChange(currentDate(), normalizedCount)
         return HomeGoalSettings(normalizedCount)
     }
 
     suspend fun getFixedRoutinesForHome(): List<Routine> {
-        return growthDao.getFixedActiveRoutines().map { it.toDomain() }
+        return ensureHomeFixedRoutineOrderIndexes().map { it.toDomain() }
+    }
+
+    suspend fun updateHomeFixedRoutineOrders(orderedRoutineIds: List<String>) {
+        orderedRoutineIds.forEachIndexed { index, routineId ->
+            growthDao.updateRoutineHomeFixedOrderIndex(routineId, index, currentDate())
+        }
+    }
+
+    private suspend fun ensureHomeFixedRoutineOrderIndexes(): List<RoutineEntity> {
+        val fixedRoutines = growthDao.getFixedActiveRoutines()
+        if (fixedRoutines.none { it.homeFixedOrderIndex == null }) return fixedRoutines
+        fixedRoutines.forEachIndexed { index, routine ->
+            growthDao.updateRoutineHomeFixedOrderIndex(routine.id, index, currentDate())
+        }
+        return growthDao.getFixedActiveRoutines()
     }
 
     suspend fun getTodayRandomRoutines(date: String): List<Routine> {
-        val state = getOrCreateDailyHomeState(date)
+        val settings = getHomeGoalSettings()
+        val state = ensureDailyHomeStateHasTargetCount(
+            state = getOrCreateDailyHomeState(date),
+            requestedCount = settings.randomTodayGoalCount
+        )
         val selectedIds = state.selectedRoutineIds.toIdList()
+            .take(settings.randomTodayGoalCount)
         if (selectedIds.isEmpty()) return emptyList()
         val routinesById = growthDao.getRoutinesByIds(selectedIds).associateBy { it.id }
         return selectedIds.mapNotNull { routinesById[it] }
@@ -785,7 +828,7 @@ class TrailNoteRepository(
     suspend fun getOrCreateDailyHomeState(date: String): DailyHomeStateEntity {
         val settings = getHomeGoalSettings()
         homeDao.getDailyHomeState(date)?.let {
-            return adjustDailyHomeState(it, settings.randomTodayGoalCount)
+            return ensureDailyHomeStateHasTargetCount(it, settings.randomTodayGoalCount)
         }
         val selectedIds = drawRoutineIdsFromBag(settings.randomTodayGoalCount)
         val state = DailyHomeStateEntity(
@@ -799,7 +842,7 @@ class TrailNoteRepository(
 
     suspend fun adjustTodayRoutineGoalsForCountChange(date: String, newCount: Int): DailyHomeStateEntity {
         return homeDao.getDailyHomeState(date)
-            ?.let { adjustDailyHomeState(it, newCount) }
+            ?.let { ensureDailyHomeStateHasTargetCount(it, newCount) }
             ?: DailyHomeStateEntity(
                 date = date,
                 selectedRoutineIds = drawRoutineIdsFromBag(newCount).joinToString(ID_SEPARATOR),
@@ -807,14 +850,13 @@ class TrailNoteRepository(
             ).also { homeDao.insertOrUpdateDailyHomeState(it) }
     }
 
-    private suspend fun adjustDailyHomeState(state: DailyHomeStateEntity, requestedCount: Int): DailyHomeStateEntity {
+    private suspend fun ensureDailyHomeStateHasTargetCount(state: DailyHomeStateEntity, requestedCount: Int): DailyHomeStateEntity {
         val candidateIds = getRandomCandidateRoutineIds()
         val targetCount = requestedCount.coerceIn(MIN_RANDOM_TODAY_GOAL_COUNT, MAX_RANDOM_TODAY_GOAL_COUNT).coerceAtMost(candidateIds.size)
         val selectedIds = state.selectedRoutineIds.toIdList()
         val activeRandomIds = selectedIds
             .filter { it in candidateIds }
             .distinct()
-            .take(targetCount)
         val adjustedIds = if (activeRandomIds.size < targetCount) {
             activeRandomIds + drawRoutineIdsFromBag(
                 count = targetCount - activeRandomIds.size,
@@ -1416,11 +1458,11 @@ class TrailNoteRepository(
     }
 
     private fun MilestoneEntity.toDomain(): Milestone {
-        return Milestone(id, projectId, title, description, orderIndex, targetDate)
+        return Milestone(id, projectId, title, description, orderIndex, targetDate, createdAt, updatedAt)
     }
 
     private fun ShortTaskEntity.toDomain(): ShortTask {
-        return ShortTask(id, milestoneId, title, isDone, orderIndex)
+        return ShortTask(id, milestoneId, title, isDone, orderIndex, createdAt, updatedAt, completedAt)
     }
 
     private fun LogCategoryEntity.toDomain(): LogCategory {

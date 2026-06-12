@@ -11,14 +11,35 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/topicTitleText"
-            style="@style/TrailText.Section"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:clickable="true"
-            android:focusable="true" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/topicTitleText"
+                style="@style/TrailText.Section"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/topicCategoryBadgeText"
+                android:layout_width="wrap_content"
+                android:layout_height="22dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_log_category_badge"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:textColor="#555555"
+                android:textSize="11sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/topicAddButton"

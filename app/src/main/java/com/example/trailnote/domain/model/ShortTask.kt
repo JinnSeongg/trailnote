@@ -5,5 +5,8 @@ data class ShortTask(
     val milestoneId: String,
     val title: String,
     val isDone: Boolean,
-    val order: Int
+    val order: Int,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val completedAt: String? = null
 )

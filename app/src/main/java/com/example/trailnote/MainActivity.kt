@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private var selectionDeleteHandler: (() -> Unit)? = null
     private var selectionMoveHandler: (() -> Unit)? = null
     private var isUpdatingBottomNavigation = false
+    private var lastBackPressedAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,15 +89,39 @@ class MainActivity : AppCompatActivity() {
                 }
             })
         })
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (binding.drawerLayout.isDrawerOpen(Gravity.LEFT)) {
+                    binding.drawerLayout.closeDrawer(Gravity.LEFT)
+                    return
+                }
+                if (navController.currentDestination?.id.isRootTabDestination()) {
+                    handleRootTabBackPressed()
+                } else if (!navController.popBackStack()) {
+                    handleRootTabBackPressed()
+                }
+            }
+        })
 
         navController.addOnDestinationChangedListener { _, destination, _ ->
             selectionController.exit()
+            lastBackPressedAt = 0L
             val tabId = destination.id.toRootTabId() ?: return@addOnDestinationChangedListener
             if (binding.bottomNavigation.selectedItemId != tabId) {
                 isUpdatingBottomNavigation = true
                 binding.bottomNavigation.selectedItemId = tabId
                 isUpdatingBottomNavigation = false
             }
+        }
+    }
+
+    private fun handleRootTabBackPressed() {
+        val now = System.currentTimeMillis()
+        if (now - lastBackPressedAt <= BACK_PRESS_EXIT_INTERVAL_MS) {
+            finish()
+        } else {
+            lastBackPressedAt = now
+            Toast.makeText(this, "\uC571\uC744 \uC885\uB8CC\uD558\uB824\uBA74 \uD55C \uBC88 \uB354 \uB204\uB974\uC138\uC694", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -144,7 +169,6 @@ class MainActivity : AppCompatActivity() {
                 onSave = { count ->
                     lifecycleScope.launch {
                         repository.updateRandomTodayGoalCount(count)
-                        supportFragmentManager.setFragmentResult(HomeFragment.REQUEST_TODAY_GOAL_COUNT_CHANGED, Bundle.EMPTY)
                         currentHomeFragment()?.refreshHomeGoals()
                     }
                 }
@@ -191,5 +215,20 @@ class MainActivity : AppCompatActivity() {
             R.id.achievementListFragment -> R.id.profileFragment
             else -> null
         }
+    }
+
+    private fun Int?.isRootTabDestination(): Boolean {
+        return when (this) {
+            R.id.homeFragment,
+            R.id.projectFragment,
+            R.id.logFragment,
+            R.id.growthFragment,
+            R.id.profileFragment -> true
+            else -> false
+        }
+    }
+
+    companion object {
+        private const val BACK_PRESS_EXIT_INTERVAL_MS = 2_000L
     }
 }

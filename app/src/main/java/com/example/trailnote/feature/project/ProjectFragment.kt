@@ -30,6 +30,11 @@ import com.example.trailnote.domain.model.Project
 import com.example.trailnote.domain.model.ProjectCategory
 import com.example.trailnote.domain.model.ShortTask
 import kotlinx.coroutines.launch
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 class ProjectFragment : Fragment() {
     private var binding: FragmentProjectBinding? = null
@@ -75,14 +80,14 @@ class ProjectFragment : Fragment() {
                 }
             },
             onCategoryLongClick = ::showCategoryMenu,
-            projectProgressProvider = ::projectProgress
+            projectUiStateProvider = ::projectUiState
         )
         projectAdapter = ProjectAdapter(
             emptyList(),
             ::handleProjectClick,
             ::handleProjectLongClick,
             ::isProjectSelected,
-            ::projectProgress
+            ::projectUiState
         )
         selectionController.addStateListener(selectionStateListener)
         current.projectList.layoutManager = LinearLayoutManager(requireContext())
@@ -281,7 +286,7 @@ class ProjectFragment : Fragment() {
                 .groupBy { it.categoryId }
             val categorySections = projectCategories.sortedByStableCreationOrder().mapNotNull { projectCategory ->
                 val projects = projectsByCategoryId[projectCategory.id].orEmpty()
-                if (projects.isNotEmpty() || currentFilter == ProjectFilter.All) {
+                if (projects.isNotEmpty()) {
                     ProjectSection(projectCategory.id, projectCategory.title, projects)
                 } else {
                     null
@@ -361,6 +366,61 @@ class ProjectFragment : Fragment() {
         return ProgressCalculator.projectProgress(milestoneProgresses)
     }
 
+    private fun projectUiState(project: Project): ProjectUiState {
+        val progress = projectProgress(project)
+        val lastWorkedAt = projectLastWorkedAt(project)
+        return ProjectUiState(
+            progress = progress,
+            statusText = if (progress >= 100) "\uC644\uB8CC" else "\uC9C4\uD589\uC911",
+            lastWorkText = lastWorkedAt?.let(::formatRelativeTime) ?: "\uB9C8\uC9C0\uB9C9 \uC791\uC5C5 \uBBF8\uC815",
+            lastWorkedAt = lastWorkedAt
+        )
+    }
+
+    private fun projectLastWorkedAt(project: Project): Long? {
+        val projectMilestones = milestones.filter { it.projectId == project.id }
+        val milestoneIds = projectMilestones.map { it.id }.toSet()
+        val milestoneTimes = projectMilestones.flatMap { milestone ->
+            listOf(milestone.createdAt, milestone.updatedAt)
+        }
+        val shortTaskTimes = shortTasks
+            .filter { it.milestoneId in milestoneIds }
+            .flatMap { task ->
+                listOfNotNull(
+                    task.createdAt,
+                    task.updatedAt,
+                    task.completedAt
+                )
+            }
+        return (milestoneTimes + shortTaskTimes)
+            .mapNotNull { it.takeIf(String::isNotBlank)?.toEpochMillis() }
+            .maxOrNull()
+    }
+
+    private fun formatRelativeTime(timeMillis: Long): String {
+        val elapsed = Duration.between(Instant.ofEpochMilli(timeMillis), Instant.now()).coerceAtLeast(Duration.ZERO)
+        val minutes = elapsed.toMinutes()
+        if (minutes < 1) return "\uBC29\uAE08 \uC804"
+        if (minutes < 60) return "${minutes}\uBD84 \uC804"
+        val hours = elapsed.toHours()
+        if (hours < 24) return "${hours}\uC2DC\uAC04 \uC804"
+        val days = elapsed.toDays()
+        if (days < 7) return "${days}\uC77C \uC804"
+        if (days < 30) return "${days / 7}\uC8FC \uC804"
+        if (days < 365) return "${days / 30}\uAC1C\uC6D4 \uC804"
+        return "${days / 365}\uB144 \uC804"
+    }
+
+    private fun String.toEpochMillis(): Long? {
+        return runCatching {
+            LocalDateTime.parse(this).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }.getOrElse {
+            runCatching {
+                LocalDate.parse(this).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            }.getOrNull()
+        }
+    }
+
     private fun updateBackCallbackState() {
         val current = binding ?: return
         if (::backCallback.isInitialized) {
@@ -391,10 +451,11 @@ class ProjectFragment : Fragment() {
     }
 
     private fun Project.matchesFilter(filter: ProjectFilter): Boolean {
+        val progress = projectUiState(this).progress
         return when (filter) {
             ProjectFilter.All -> true
-            ProjectFilter.Active -> !status.isDoneStatus()
-            ProjectFilter.Done -> status.isDoneStatus()
+            ProjectFilter.Active -> progress < 100
+            ProjectFilter.Done -> progress >= 100
         }
     }
 
@@ -402,10 +463,6 @@ class ProjectFragment : Fragment() {
         setTextColor(resources.getColor(if (isSelected) R.color.white else R.color.trail_text_secondary, null))
         setBackgroundResource(if (isSelected) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
         setTypeface(typeface, if (isSelected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
-    }
-
-    private fun String.isDoneStatus(): Boolean {
-        return trim().lowercase() in setOf("\uC644\uB8CC", "?꾨즺", "done", "completed")
     }
 
     override fun onDestroyView() {
