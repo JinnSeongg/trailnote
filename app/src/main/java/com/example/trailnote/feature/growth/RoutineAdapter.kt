@@ -94,7 +94,7 @@ class RoutineAdapter(
             binding.repeatTypeText.setOnClickListener(null)
             binding.checkBox.text = item.title
             binding.checkBox.isChecked = item.isDoneToday
-            binding.repeatTypeText.text = item.fixedStateText()
+            bindFixedStateBadge(item.isFixed)
             Log.d(TAG, "routineAdapter bind title=${item.title} parentColor=$colorHex")
             binding.checkBox.buttonTintList = ColorStateList.valueOf(parseColor(colorHex))
             binding.root.setBackgroundResource(if (isSelected(item)) R.drawable.bg_short_task_selected else android.R.color.transparent)
@@ -130,6 +130,16 @@ class RoutineAdapter(
             return runCatching { Color.parseColor(colorHex) }.getOrDefault(Color.parseColor(GrowthColorPalette.DEFAULT_COLOR))
         }
 
+        private fun bindFixedStateBadge(isFixed: Boolean) {
+            binding.repeatTypeText.text = if (isFixed) "\uACE0\uC815" else "\uC77C\uBC18"
+            binding.repeatTypeText.setBackgroundResource(
+                if (isFixed) R.drawable.bg_routine_badge_fixed else R.drawable.bg_routine_badge_normal
+            )
+            binding.repeatTypeText.setTextColor(
+                Color.parseColor(if (isFixed) "#FFFFFF" else "#555555")
+            )
+        }
+
         private fun applyCompletionStyle(isDone: Boolean) {
             binding.checkBox.paintFlags = if (isDone) {
                 binding.checkBox.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
@@ -147,5 +157,3 @@ class RoutineAdapter(
         }
     }
 }
-
-private fun Routine.fixedStateText(): String = if (isFixed) "\uACE0\uC815" else "\uC77C\uBC18"
