@@ -22,6 +22,7 @@ import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.ProgressCalculator
+import com.example.trailnote.core.util.RelativeTimeFormatter
 import com.example.trailnote.core.util.setupTwoLineLimitedDescriptionEditText
 import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.repository.RepositoryProvider
@@ -42,6 +43,7 @@ class ProjectDetailFragment : Fragment() {
     private var projects: List<Project> = emptyList()
     private var milestones: List<Milestone> = emptyList()
     private var shortTasks: List<ShortTask> = emptyList()
+    private var milestoneUiModels: List<MilestoneUiModel> = emptyList()
     private val selectionStateListener: (SelectionState) -> Unit = {
         if (::milestoneAdapter.isInitialized) milestoneAdapter.notifyDataSetChanged()
     }
@@ -65,8 +67,7 @@ class ProjectDetailFragment : Fragment() {
             emptyList(),
             onClick = ::handleMilestoneClick,
             onLongClick = ::handleMilestoneLongClick,
-            isSelected = ::isMilestoneSelected,
-            taskSummaryProvider = ::taskSummary
+            isSelected = ::isMilestoneSelected
         )
         selectionController.addStateListener(selectionStateListener)
         current.milestoneList.layoutManager = LinearLayoutManager(requireContext())
@@ -243,7 +244,8 @@ class ProjectDetailFragment : Fragment() {
             }
             projects = repository.getProjects()
             milestones = repository.getMilestonesByProjectId(projectId)
-            shortTasks = repository.getShortTasks()
+            shortTasks = repository.getShortTasksByProjectId(projectId)
+            milestoneUiModels = milestones.map(::milestoneUiModel)
             renderProject()
         }
     }
@@ -261,17 +263,28 @@ class ProjectDetailFragment : Fragment() {
         if (current.descriptionText.text.toString() != currentProject.description) {
             current.descriptionText.setText(currentProject.description)
         }
-        milestoneAdapter.submitList(milestones)
+        milestoneAdapter.submitList(milestoneUiModels)
         current.emptyText.visibility = if (milestones.isEmpty()) View.VISIBLE else View.GONE
         current.milestoneList.visibility = if (milestones.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    private fun taskSummary(milestone: Milestone): TaskSummary {
+    private fun milestoneUiModel(milestone: Milestone): MilestoneUiModel {
         val tasks = shortTasks.filter { it.milestoneId == milestone.id }
-        return TaskSummary(
+        val progress = ProgressCalculator.milestoneProgress(tasks)
+        val lastWorkedAt = RelativeTimeFormatter.latestEpochMillis(
+            tasks.flatMap { task ->
+                listOf(task.createdAt, task.updatedAt, task.completedAt)
+            }
+        )
+        return MilestoneUiModel(
+            milestone = milestone,
             doneCount = tasks.count { it.isDone },
             totalCount = tasks.size,
-            progress = ProgressCalculator.milestoneProgress(tasks)
+            progress = progress,
+            isCompleted = progress >= 100,
+            lastWorkedAt = lastWorkedAt,
+            statusText = if (progress >= 100) "\uC644\uB8CC" else "\uC9C4\uD589\uC911",
+            lastWorkText = lastWorkedAt?.let(RelativeTimeFormatter::format) ?: "\uB9C8\uC9C0\uB9C9 \uC791\uC5C5 \uBBF8\uC815"
         )
     }
 

@@ -21,6 +21,7 @@ import com.example.trailnote.core.util.DeleteConfirmDialogHelper
 import com.example.trailnote.core.util.InlineQuickAdd
 import com.example.trailnote.core.util.PopupMenuHelper
 import com.example.trailnote.core.util.ProgressCalculator
+import com.example.trailnote.core.util.RelativeTimeFormatter
 import com.example.trailnote.core.util.setHeader
 import com.example.trailnote.data.local.db.DatabaseSeeder
 import com.example.trailnote.data.repository.RepositoryProvider
@@ -30,11 +31,6 @@ import com.example.trailnote.domain.model.Project
 import com.example.trailnote.domain.model.ProjectCategory
 import com.example.trailnote.domain.model.ShortTask
 import kotlinx.coroutines.launch
-import java.time.Duration
-import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.ZoneId
 
 class ProjectFragment : Fragment() {
     private var binding: FragmentProjectBinding? = null
@@ -372,7 +368,7 @@ class ProjectFragment : Fragment() {
         return ProjectUiState(
             progress = progress,
             statusText = if (progress >= 100) "\uC644\uB8CC" else "\uC9C4\uD589\uC911",
-            lastWorkText = lastWorkedAt?.let(::formatRelativeTime) ?: "\uB9C8\uC9C0\uB9C9 \uC791\uC5C5 \uBBF8\uC815",
+            lastWorkText = lastWorkedAt?.let(RelativeTimeFormatter::format) ?: "\uB9C8\uC9C0\uB9C9 \uC791\uC5C5 \uBBF8\uC815",
             lastWorkedAt = lastWorkedAt
         )
     }
@@ -392,33 +388,7 @@ class ProjectFragment : Fragment() {
                     task.completedAt
                 )
             }
-        return (milestoneTimes + shortTaskTimes)
-            .mapNotNull { it.takeIf(String::isNotBlank)?.toEpochMillis() }
-            .maxOrNull()
-    }
-
-    private fun formatRelativeTime(timeMillis: Long): String {
-        val elapsed = Duration.between(Instant.ofEpochMilli(timeMillis), Instant.now()).coerceAtLeast(Duration.ZERO)
-        val minutes = elapsed.toMinutes()
-        if (minutes < 1) return "\uBC29\uAE08 \uC804"
-        if (minutes < 60) return "${minutes}\uBD84 \uC804"
-        val hours = elapsed.toHours()
-        if (hours < 24) return "${hours}\uC2DC\uAC04 \uC804"
-        val days = elapsed.toDays()
-        if (days < 7) return "${days}\uC77C \uC804"
-        if (days < 30) return "${days / 7}\uC8FC \uC804"
-        if (days < 365) return "${days / 30}\uAC1C\uC6D4 \uC804"
-        return "${days / 365}\uB144 \uC804"
-    }
-
-    private fun String.toEpochMillis(): Long? {
-        return runCatching {
-            LocalDateTime.parse(this).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        }.getOrElse {
-            runCatching {
-                LocalDate.parse(this).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            }.getOrNull()
-        }
+        return RelativeTimeFormatter.latestEpochMillis(milestoneTimes + shortTaskTimes)
     }
 
     private fun updateBackCallbackState() {

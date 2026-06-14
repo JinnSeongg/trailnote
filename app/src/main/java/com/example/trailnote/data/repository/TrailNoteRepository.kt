@@ -89,6 +89,9 @@ class TrailNoteRepository(
     suspend fun getShortTasksByMilestoneId(milestoneId: String): List<ShortTask> {
         return projectDao.getShortTasksByMilestoneId(milestoneId).map { it.toDomain() }
     }
+    suspend fun getShortTasksByProjectId(projectId: String): List<ShortTask> {
+        return projectDao.getShortTasksByProjectId(projectId).map { it.toDomain() }
+    }
 
     suspend fun insertProject(project: ProjectEntity) = projectDao.insertProject(project)
     suspend fun updateProject(project: ProjectEntity) {

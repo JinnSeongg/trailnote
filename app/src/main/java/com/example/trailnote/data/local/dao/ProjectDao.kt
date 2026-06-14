@@ -58,6 +58,16 @@ interface ProjectDao {
     @Query("SELECT * FROM short_tasks WHERE milestoneId = :milestoneId ORDER BY orderIndex ASC")
     suspend fun getShortTasksByMilestoneId(milestoneId: String): List<ShortTaskEntity>
 
+    @Query(
+        """
+        SELECT short_tasks.* FROM short_tasks
+        INNER JOIN milestones ON milestones.id = short_tasks.milestoneId
+        WHERE milestones.projectId = :projectId
+        ORDER BY short_tasks.orderIndex ASC
+        """
+    )
+    suspend fun getShortTasksByProjectId(projectId: String): List<ShortTaskEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProject(project: ProjectEntity)
 
